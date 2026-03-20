@@ -1,0 +1,14 @@
+# Secrets — never commit these
+.env
+
+# dbt — generated files and credentials
+dbt/profiles.yml
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Airflow — runtime logs
+airflow/logs/
+
+# Mac
+.DS_Store

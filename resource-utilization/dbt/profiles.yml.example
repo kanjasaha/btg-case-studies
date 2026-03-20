@@ -1,0 +1,19 @@
+# profiles.yml
+# Tells dbt how to connect to PostgreSQL.
+# NEVER commit this file — it contains your password.
+# Share profiles.yml.example with teammates instead.
+
+resource_utilization:   # must match profile: in dbt_project.yml
+
+  target: dev
+
+  outputs:
+    dev:
+      type: postgres
+      host: postgres            # container name inside Docker
+      port: 5432
+      user: mds_user
+      password: YOUR_PASSWORD_HERE    # from .env
+      dbname: btg_resource_utilization
+      schema: staging_silver    # default schema (overridden per folder in dbt_project.yml)
+      threads: 4                # models run in parallel
