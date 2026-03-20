@@ -1,0 +1,7 @@
+# Cosmos — the bridge between dbt and Airflow
+# Turns every dbt model into an individual Airflow task
+astronomer-cosmos==1.13.1
+
+# Official Airflow connector for PostgreSQL
+# Without this, Airflow cannot talk to a PostgreSQL database
+apache-airflow-providers-postgres
