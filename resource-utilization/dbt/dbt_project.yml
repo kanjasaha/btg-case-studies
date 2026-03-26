@@ -1,0 +1,58 @@
+# dbt_project.yml
+# Main configuration file. Every dbt project must have exactly one.
+
+# Project name — must match profile: in profiles.yml
+name: 'resource_utilization'
+version: '1.0.0'
+
+# Format version of this config file — always 2 for modern dbt
+config-version: 2
+
+# Which connection profile to use — defined in profiles.yml
+profile: 'resource_utilization'
+
+# Where dbt looks for each type of file
+model-paths: ["models"]   # SQL transformation models
+test-paths:  ["tests"]    # custom data quality tests
+seed-paths:  ["seeds"]    # CSV lookup tables
+macro-paths:     ["macros"]     # reusable SQL functions
+snapshot-paths:  ["snapshots"]  # slowly changing dimension snapshots
+
+# Where dbt writes compiled SQL — gitignored, never commit
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Seed configuration — controls how CSV files in seeds/ are loaded
+seeds:
+  resource_utilization:
+    +schema: seeds            # write to the seeds schema in PostgreSQL
+    +post-hook:               # grant access after loading
+      - "GRANT SELECT ON {{ this }} TO analytics_engineer"
+      - "GRANT SELECT ON {{ this }} TO data_scientist"
+
+# Model configuration — controls how each folder of models behaves
+models:
+  resource_utilization:   # must match project name above
+
+    staging:
+      +schema: staging_silver   # write to staging_silver schema
+      +materialized: view       # VIEW — virtual, always fresh, saves storage
+      +post-hook:               # grant access after each model builds
+        - "GRANT SELECT ON {{ this }} TO analytics_engineer"
+        - "GRANT SELECT ON {{ this }} TO data_scientist"
+
+    intermediate:
+      +schema: staging_silver   # lives in staging_silver alongside staging models
+      +materialized: incremental # INCREMENTAL — only processes new rows each run
+      +post-hook:
+        - "GRANT SELECT ON {{ this }} TO analytics_engineer"
+        - "GRANT SELECT ON {{ this }} TO data_scientist"
+
+    marts:
+      +schema: mart_gold        # write to mart_gold schema
+      +materialized: table      # TABLE — physically stored, faster for Metabase
+      +post-hook:               # grant access after each model builds
+        - "GRANT SELECT ON {{ this }} TO analytics_engineer"
+        - "GRANT SELECT ON {{ this }} TO business_user"

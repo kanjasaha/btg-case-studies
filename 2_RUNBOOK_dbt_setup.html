@@ -398,7 +398,60 @@ models:
         - "GRANT SELECT ON {{ this }} TO analytics_engineer"
         - "GRANT SELECT ON {{ this }} TO business_user"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="callout info"><strong>What does <code>{{ this }}</code> mean?</strong>Jinja templating — dbt's way of writing dynamic SQL. <code>{{ this }}</code> refers to the exact table or view just created. So after each model or seed builds, dbt automatically runs a GRANT on that specific table — keeping permissions always in sync.</div>
+  <div class="callout info"><strong>name and profile — they must match each other.</strong>
+    <code>name: 'resource_utilization'</code> is the project name.<br>
+    <code>profile: 'resource_utilization'</code> tells dbt which entry in <code>profiles.yml</code> to use for the database connection.<br><br>
+    These two values must be identical. Think of it as dbt looking up the project name in <code>profiles.yml</code> like a phonebook — if the names don't match, dbt cannot find its connection credentials and will error immediately.
+  </div>
+
+  <div class="callout info"><strong>model-paths, test-paths, seed-paths etc. — where dbt looks for files.</strong>
+    Each path tells dbt where to find a specific type of file inside the <code>dbt/</code> folder:<br><br>
+    <code>model-paths: ["models"]</code> → look for <code>.sql</code> transformation files in <code>dbt/models/</code><br>
+    <code>test-paths: ["tests"]</code> → look for custom test SQL files in <code>dbt/tests/</code><br>
+    <code>seed-paths: ["seeds"]</code> → look for <code>.csv</code> lookup files in <code>dbt/seeds/</code><br>
+    <code>macro-paths: ["macros"]</code> → look for reusable SQL functions in <code>dbt/macros/</code><br>
+    <code>snapshot-paths: ["snapshots"]</code> → look for snapshot definitions in <code>dbt/snapshots/</code><br><br>
+    These match exactly the folders you created in Step 1. If you put a model file anywhere else, dbt will not find it.
+  </div>
+
+  <div class="callout info"><strong>target-path and clean-targets — where dbt writes generated files.</strong>
+    <code>target-path: "target"</code> — dbt writes all compiled SQL and run artifacts into <code>dbt/target/</code>. This is why <code>dbt/target/</code> is in your <code>.gitignore</code> — it is machine-generated output, not code you wrote.<br><br>
+    <code>clean-targets</code> — the list of folders that <code>dbt clean</code> wipes when you want a completely fresh start. Running <code>dbt clean</code> deletes both <code>target/</code> and <code>dbt_packages/</code> so you can rebuild from scratch.
+  </div>
+
+  <div class="callout info"><strong>The + prefix — what it means.</strong>
+    Throughout this file you see <code>+schema</code>, <code>+materialized</code>, <code>+post-hook</code>. The <code>+</code> prefix means the setting is a dbt configuration that applies to all models in that folder — not a subfolder name. Without <code>+</code>, dbt would think you are defining a new subfolder called <code>schema</code> or <code>materialized</code> rather than a configuration setting.
+  </div>
+
+  <div class="callout info"><strong>seeds block — how CSV lookup tables are loaded.</strong>
+    <code>+schema: seeds</code> — when you run <code>dbt seed</code>, CSV files land in a schema called <code>seeds</code>. Combined with the <code>generate_schema_name</code> macro from Step 2b, this becomes <code>dbt_alice_seeds</code> in your personal environment and just <code>seeds</code> in production.<br><br>
+    <code>+post-hook</code> — SQL that runs automatically after each seed loads. Here it grants read access to <code>analytics_engineer</code> and <code>data_scientist</code> roles. Because table-level grants can only be applied after the table exists, post-hooks are the right place for this — not the schema setup script.
+  </div>
+
+  <div class="callout info"><strong>models block — the most important section.</strong>
+    For each folder of models it sets three things:<br><br>
+
+    <strong>+schema</strong> — which custom schema to write to. Combined with <code>generate_schema_name</code>:<br>
+    &nbsp;&nbsp;<code>staging_silver</code> → personal: <code>dbt_alice_staging_silver</code>, prod: <code>staging_silver</code><br>
+    &nbsp;&nbsp;<code>mart_gold</code> → personal: <code>dbt_alice_mart_gold</code>, prod: <code>mart_gold</code><br><br>
+
+    <strong>+materialized</strong> — how dbt physically creates the model in PostgreSQL:<br>
+    <table style="font-size:13.5px;margin:8px 0;">
+      <thead><tr><th>Value</th><th>What it creates</th><th>Why this layer uses it</th></tr></thead>
+      <tbody>
+        <tr><td><code>view</code></td><td>A virtual view — no data stored, always reads fresh from source</td><td>Staging — lightweight, always current, cheap to rebuild</td></tr>
+        <tr><td><code>incremental</code></td><td>A table that only adds new rows each run — skips rows already processed</td><td>Intermediate — large aggregations, processing full data every run would be slow</td></tr>
+        <tr><td><code>table</code></td><td>A full physical table — all rows stored, rebuilt completely each run</td><td>Marts — fast for Metabase to query, worth the rebuild cost</td></tr>
+      </tbody>
+    </table>
+
+    <strong>+post-hook</strong> — SQL that grants read access after each model builds. Each layer grants to different roles:<br>
+    &nbsp;&nbsp;staging and intermediate → <code>analytics_engineer</code>, <code>data_scientist</code><br>
+    &nbsp;&nbsp;marts → <code>analytics_engineer</code>, <code>business_user</code><br><br>
+    Business users only need mart access — they should never query raw staging views directly.
+  </div>
+
+  <div class="callout info"><strong>What does <code>{{ this }}</code> mean?</strong>Jinja templating — dbt's way of writing dynamic SQL. <code>{{ this }}</code> refers to the exact table or view just created by the current model. So after <code>stg_customer_details</code> builds, dbt runs <code>GRANT SELECT ON staging_silver.stg_customer_details TO analytics_engineer</code> automatically — keeping permissions always in sync without you having to write the table name manually.</div>
 
   <div class="callout info"><strong>How do the +schema values combine with profiles.yml to produce final schema names?</strong>
     dbt takes your <code>schema</code> from <code>profiles.yml</code> and appends the <code>+schema</code> from <code>dbt_project.yml</code> with an underscore. But in production you want clean schema names with no prefix. Step 2b adds a macro that controls this behaviour per environment.<br><br>
