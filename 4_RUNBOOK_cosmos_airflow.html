@@ -437,6 +437,13 @@
 <section id="step3">
   <div class="step-header"><div class="sc">3</div><h2>Add the DAG files</h2></div>
 
+  <div class="callout info"><strong>Why do the production schemas have a <code>prod_</code> prefix?</strong>
+    When dbt runs, it combines the target schema from <code>profiles.yml</code> with the custom schema from <code>dbt_project.yml</code>. Since the production target uses <code>schema: prod</code> in <code>profiles.yml</code> and the models are configured with <code>+schema: staging_silver</code> and <code>+schema: mart_gold</code>, dbt produces:<br><br>
+    <code>prod</code> + <code>staging_silver</code> → <code>prod_staging_silver</code><br>
+    <code>prod</code> + <code>mart_gold</code> → <code>prod_mart_gold</code><br><br>
+    This is dbt's default behaviour. The DAG files below use these exact schema names so Airflow writes models to the correct production schemas. When you connect Metabase later, point it at <code>prod_mart_gold</code>.
+  </div>
+
   <p>The three DAG files live in <code>airflow/dags/</code> inside the repo. Confirm they are there:</p>
 
   <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
@@ -462,15 +469,12 @@ DBT_EXECUTABLE  = Path("/usr/local/airflow/dbt_venv/bin/dbt")
 
 profile_config = ProfileConfig(
     profile_name="resource_utilization",
-    target_name="dev",
+    target_name="prod",
     profile_mapping=PostgresUserPasswordProfileMapping(
         conn_id="postgres_default",
-        profile_args={"schema": "staging_silver"},
+        profile_args={"schema": "prod_staging_silver"},
     ),
 )
-
-with DAG(
-    dag_id="silver_layer_staging",
     start_date=datetime(2026, 1, 1),
     schedule_interval="0 */6 * * *",   # every 6 hours
     catchup=False,
@@ -504,10 +508,10 @@ DBT_EXECUTABLE  = Path("/usr/local/airflow/dbt_venv/bin/dbt")
 
 profile_config = ProfileConfig(
     profile_name="resource_utilization",
-    target_name="dev",
+    target_name="prod",
     profile_mapping=PostgresUserPasswordProfileMapping(
         conn_id="postgres_default",
-        profile_args={"schema": "staging_silver"},
+        profile_args={"schema": "prod_staging_silver"},
     ),
 )
 
@@ -546,10 +550,10 @@ DBT_EXECUTABLE  = Path("/usr/local/airflow/dbt_venv/bin/dbt")
 
 profile_config = ProfileConfig(
     profile_name="resource_utilization",
-    target_name="dev",
+    target_name="prod",
     profile_mapping=PostgresUserPasswordProfileMapping(
         conn_id="postgres_default",
-        profile_args={"schema": "mart_gold"},
+        profile_args={"schema": "prod_mart_gold"},
     ),
 )
 
@@ -696,7 +700,7 @@ SELECT
   model_variant,
   month_start_date,
   total_net_revenue
-FROM mart_gold.model_revenue_monthly
+FROM prod_mart_gold.model_revenue_monthly
 ORDER BY month_start_date DESC, total_net_revenue DESC
 LIMIT 5;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
@@ -710,7 +714,7 @@ docker exec airflow-scheduler airflow dags list-runs --dag-id gold_layer_marts_d
 
   <div class="checkpoint">All three commands show recent runs with state <code>success</code>.</div>
 
-  <div class="callout success"><strong>Your pipeline is fully automated.</strong> Silver staging refreshes every 6 hours. Intermediate models run at 1am. Gold marts build at 2am. Every model is visible and trackable in the Airflow UI — and Metabase is reading live data from <code>mart_gold</code> every time a dashboard is opened.
+  <div class="callout success"><strong>Your pipeline is fully automated.</strong> Silver staging refreshes every 6 hours. Intermediate models run at 1am. Gold marts build at 2am. Every model is visible and trackable in the Airflow UI — and Metabase is reading live data from <code>prod_mart_gold</code> every time a dashboard is opened.
   </div>
 </section>
 
@@ -797,6 +801,18 @@ dbt compile</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</
 function copyCode(btn) {
   const code = btn.previousElementSibling.innerText;
   navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = code;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
     btn.textContent = 'copied!';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);

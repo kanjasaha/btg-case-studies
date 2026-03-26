@@ -122,7 +122,6 @@
       <div class="toc-section-label">Build the dbt project</div>
       <a href="#step1" class="toc-link"><span class="sn">1</span>Create the dbt folder</a>
       <a href="#step2" class="toc-link"><span class="sn">2</span>Create dbt_project.yml</a>
-      <a href="#step2b" class="toc-link"><span class="sn">2b</span>Create schema name macro</a>
       <a href="#step3" class="toc-link"><span class="sn">3</span>Create profiles.yml</a>
       <a href="#step4" class="toc-link"><span class="sn">4</span>Test connection &amp; install packages</a>
     </div>
@@ -454,15 +453,13 @@ models:
   <div class="callout info"><strong>What does <code>{{ this }}</code> mean?</strong>Jinja templating — dbt's way of writing dynamic SQL. <code>{{ this }}</code> refers to the exact table or view just created by the current model. So after <code>stg_customer_details</code> builds, dbt runs <code>GRANT SELECT ON staging_silver.stg_customer_details TO analytics_engineer</code> automatically — keeping permissions always in sync without you having to write the table name manually.</div>
 
   <div class="callout info"><strong>How do the +schema values combine with profiles.yml to produce final schema names?</strong>
-    dbt takes your <code>schema</code> from <code>profiles.yml</code> and appends the <code>+schema</code> from <code>dbt_project.yml</code> with an underscore. But in production you want clean schema names with no prefix. Step 2b adds a macro that controls this behaviour per environment.<br><br>
-    Without the macro (dbt default):<br>
-    &nbsp;&nbsp;personal (schema: dbt_alice) + staging_silver → <code>dbt_alice_staging_silver</code><br>
-    &nbsp;&nbsp;prod (schema: prod) + staging_silver → <code>prod_staging_silver</code> ← ugly<br><br>
-    With the macro (Step 2b):<br>
-    &nbsp;&nbsp;personal → <code>dbt_alice_staging_silver</code> ← isolated ✅<br>
-    &nbsp;&nbsp;dev → <code>dev_staging_silver</code> ← isolated ✅<br>
-    &nbsp;&nbsp;ci → <code>ci_staging_silver</code> ← isolated ✅<br>
-    &nbsp;&nbsp;prod → <code>staging_silver</code> ← clean, no prefix ✅
+    dbt takes your <code>schema</code> from <code>profiles.yml</code> and appends the <code>+schema</code> from <code>dbt_project.yml</code> with an underscore. This happens automatically for every environment:<br><br>
+    personal (schema: dbt_alice) + staging_silver → <code>dbt_alice_staging_silver</code><br>
+    personal (schema: dbt_alice) + mart_gold → <code>dbt_alice_mart_gold</code><br>
+    dev (schema: dev) + staging_silver → <code>dev_staging_silver</code><br>
+    dev (schema: dev) + mart_gold → <code>dev_mart_gold</code><br>
+    prod (schema: prod) + staging_silver → <code>prod_staging_silver</code><br>
+    prod (schema: prod) + mart_gold → <code>prod_mart_gold</code>
   </div>
 
   <div class="callout info"><strong>What are snapshots?</strong>
@@ -480,110 +477,6 @@ git commit -m "add dbt_project.yml"
 git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 </section>
 
-<!-- STEP 2b -->
-<section id="step2b">
-  <div class="step-header"><div class="sc">2b</div><h2>Create the schema name macro</h2></div>
-
-  <div class="callout info"><strong>What is a macro?</strong>A reusable piece of Jinja code that dbt calls automatically during every run. The <code>generate_schema_name</code> macro is a special built-in hook — dbt calls it every time it needs to figure out which schema to write a model into. By overriding it, you control exactly how schema names are generated for each environment.</div>
-
-  <div class="callout info"><strong>Why do we need this?</strong>
-    Without this macro, dbt always concatenates your target schema with the custom schema:<br>
-    <code>prod</code> + <code>staging_silver</code> → <code>prod_staging_silver</code><br><br>
-    That is fine for dev isolation but ugly in production. This macro tells dbt:<br>
-    — In <strong>personal, dev, ci</strong>: concatenate (so environments never collide)<br>
-    — In <strong>prod</strong>: use only the custom schema (clean names for Metabase and business users)
-  </div>
-
-  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
-code dbt/macros/generate_schema_name.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <p>Type this exactly, then save with <strong>⌘ + S</strong>:</p>
-
-  <div class="code-wrap"><pre><code>-- macros/generate_schema_name.sql
--- Controls how dbt names schemas in each environment.
---
--- How it works:
---   personal → dbt_alice_staging_silver  (your private isolated schemas)
---   dev      → dev_staging_silver        (shared team schemas, isolated)
---   ci       → ci_staging_silver         (automated PR test schemas, isolated)
---   prod     → staging_silver            (clean names, no prefix)
---
--- dbt calls this macro automatically on every run.
--- You never call it directly.
-
-{% macro generate_schema_name(custom_schema_name, node) -%}
-
-  {%- set default_schema = target.schema -%}
-  {# default_schema comes from profiles.yml:
-     personal → "dbt_alice"
-     dev      → "dev"
-     ci       → "ci"
-     prod     → "prod"                    #}
-
-  {%- if custom_schema_name is none -%}
-    {# No +schema set in dbt_project.yml for this model.
-       Just use the target schema as-is.
-       personal → "dbt_alice"
-       prod     → "prod"                  #}
-    {{ default_schema }}
-
-  {%- elif target.name == 'prod' -%}
-    {# Production: use ONLY the custom schema — drop the prefix entirely.
-       prod + staging_silver → "staging_silver"
-       prod + mart_gold      → "mart_gold"      #}
-    {{ custom_schema_name | trim }}
-
-  {%- elif target.name in ['personal', 'dev', 'ci'] -%}
-    {# Non-prod: prefix with target schema to isolate each environment.
-       personal + staging_silver → "dbt_alice_staging_silver"
-       dev      + staging_silver → "dev_staging_silver"
-       ci       + staging_silver → "ci_staging_silver"
-       personal + mart_gold      → "dbt_alice_mart_gold"
-       dev      + mart_gold      → "dev_mart_gold"
-       ci       + mart_gold      → "ci_mart_gold"            #}
-    {{ default_schema }}_{{ custom_schema_name | trim }}
-
-  {%- else -%}
-    {# Safety fallback for any unknown target name.
-       Concatenates like non-prod to avoid accidentally writing to wrong place. #}
-    {{ default_schema }}_{{ custom_schema_name | trim }}
-
-  {%- endif -%}
-
-{%- endmacro %}</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <h3>Verify it compiles correctly</h3>
-
-  <p>Once dbt is connected (Step 4), run this to confirm the macro resolves schemas correctly for your personal target:</p>
-
-  <div class="code-wrap"><pre><code>dbt compile --select staging --target personal</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <p>Open a compiled file and check the schema it resolved to:</p>
-
-  <div class="code-wrap"><pre><code>head -5 target/compiled/resource_utilization/models/staging/stg_customer_details.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="checkpoint">The compiled SQL references <code>dbt_yourname_staging_silver</code> — your personal schema, not prod.</div>
-
-  <div class="callout info"><strong>What schemas does each environment produce?</strong>
-    <table style="font-size:13.5px;margin:8px 0;">
-      <thead><tr><th>Target</th><th>profiles.yml schema</th><th>Staging models land in</th><th>Mart models land in</th></tr></thead>
-      <tbody>
-        <tr><td><code>personal</code></td><td><code>dbt_yourname</code></td><td><code>dbt_yourname_staging_silver</code></td><td><code>dbt_yourname_mart_gold</code></td></tr>
-        <tr><td><code>dev</code></td><td><code>dev</code></td><td><code>dev_staging_silver</code></td><td><code>dev_mart_gold</code></td></tr>
-        <tr><td><code>ci</code></td><td><code>ci</code></td><td><code>ci_staging_silver</code></td><td><code>ci_mart_gold</code></td></tr>
-        <tr><td><code>prod</code></td><td><code>prod</code></td><td><code>staging_silver</code></td><td><code>mart_gold</code></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <p>Commit:</p>
-  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
-git add .
-git commit -m "add generate_schema_name macro for environment-aware schema naming"
-git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-</section>
-
 <!-- STEP 3 -->
 <!-- STEP 8 -->
 <section id="step3">
@@ -596,11 +489,11 @@ git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</but
   <div class="callout warning"><strong>profiles.yml lives inside dbt/ — not in ~/.dbt/</strong>Our Docker setup maps <code>dbt/</code> to <code>/opt/airflow/dbt</code> inside the container, so dbt finds the file there automatically.</div>
 
   <div class="callout info"><strong>What are targets?</strong>
-    Each target is a named connection profile pointing to a different environment. You will create four:<br><br>
-    <code>personal</code> — your own private schemas, named after you. This is where you develop.<br>
-    <code>dev</code> — shared team schemas for integration checking.<br>
-    <code>ci</code> — used by GitHub Actions when running automated tests on Pull Requests.<br>
-    <code>prod</code> — live schemas that Airflow writes to and Metabase reads from.<br><br>
+    Each target is a named connection profile pointing to a different environment. You will create four, in the order they are used in the workflow:<br><br>
+    <code>personal</code> — your own private schemas, named after you. This is where you develop. When you are happy, push your branch and open a Pull Request.<br>
+    <code>ci</code> — GitHub Actions uses this automatically on every Pull Request. It builds your modified models and runs all their tests before anyone can merge. You never run this manually.<br>
+    <code>dev</code> — shared team schemas. You run this manually after your PR merges to main to verify the full project builds correctly — catching anything CI missed. Full project, full data.<br>
+    <code>prod</code> — live schemas that Airflow writes to on a schedule. Metabase reads from here. You never run <code>--target prod</code> manually.<br><br>
     Because all four environments run in the same PostgreSQL instance on your Mac, the host and credentials are the same — only the schema names differ.
   </div>
 
@@ -615,7 +508,7 @@ code dbt/profiles.yml</code></pre><button class="copy-btn" onclick="copyCode(thi
 #
 # REPLACE "yourname" with your actual first name everywhere below.
 # Example: if your name is Alice, use "alice" → dbt_alice
-# The generate_schema_name macro then produces:
+# dbt will then produce schemas like:
 #   staging models → dbt_alice_staging_silver
 #   mart models    → dbt_alice_mart_gold
 
@@ -631,7 +524,7 @@ resource_utilization:
     # Run: dbt run --target personal (or just: dbt run)
     personal:
       type: postgres
-      host: localhost            # your Mac connects via localhost
+      host: postgres             # dbt runs inside Docker — use container name
       port: 5432
       user: mds_user
       password: mds_password
@@ -639,30 +532,30 @@ resource_utilization:
       schema: dbt_yourname       # dbt prepends this to model schema names
       threads: 4
 
-    # ── DEV ──────────────────────────────────────────────────────────
-    # Shared team schemas. Merged feature branches build here.
-    # Run: dbt run --target dev
-    dev:
-      type: postgres
-      host: localhost
-      port: 5432
-      user: mds_user
-      password: mds_password
-      dbname: btg_resource_utilization
-      schema: dev
-      threads: 4
-
     # ── CI ───────────────────────────────────────────────────────────
     # Used by GitHub Actions on Pull Requests. Runs automatically.
     # You never run this manually.
     ci:
       type: postgres
-      host: localhost
+      host: postgres             # dbt runs inside Docker — use container name
       port: 5432
       user: mds_user
       password: mds_password
       dbname: btg_resource_utilization
       schema: ci
+      threads: 4
+
+    # ── DEV ──────────────────────────────────────────────────────────
+    # Shared team schemas. Run manually after merge to verify full project.
+    # Run: dbt build --target dev
+    dev:
+      type: postgres
+      host: postgres             # dbt runs inside Docker — use container name
+      port: 5432
+      user: mds_user
+      password: mds_password
+      dbname: btg_resource_utilization
+      schema: dev
       threads: 4
 
     # ── PRODUCTION ───────────────────────────────────────────────────
@@ -678,9 +571,10 @@ resource_utilization:
       schema: prod
       threads: 4</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="callout info"><strong>Why does personal use <code>host: localhost</code> but prod uses <code>host: postgres</code>?</strong>
-    When you run dbt from your Terminal (personal, dev, ci targets), dbt runs on your Mac and connects to PostgreSQL through the Docker port mapping — so it uses <code>localhost</code>.<br><br>
-    When Airflow runs dbt (prod target), dbt runs inside the Docker container. Inside Docker, containers find each other by container name — not localhost. The PostgreSQL container is named <code>postgres</code>.
+  <div class="callout info"><strong>Why does every target use <code>host: postgres</code> — not <code>localhost</code>?</strong>
+    dbt always runs inside the Airflow Docker container via the shell function you set up in Runbook 3. Inside Docker, containers find each other by container name — not by <code>localhost</code>. The PostgreSQL container is named <code>postgres</code> in <code>docker-compose.yml</code>.<br><br>
+    <code>localhost</code> would mean the Airflow container itself — which has no database running inside it. <code>postgres</code> correctly points to the separate PostgreSQL container on the same Docker network.<br><br>
+    The only place you use <code>localhost</code> to reach PostgreSQL is from your Mac directly — for example pgAdmin in your browser, or running <code>psql</code> commands from Terminal. Those connect through the Docker port mapping (<code>5432:5432</code>) which exposes PostgreSQL at <code>localhost:5432</code> on your Mac.
   </div>
 
   <div class="callout info"><strong>How do schemas get named?</strong>
@@ -697,8 +591,78 @@ resource_utilization:
   <p>Create the safe template to share with teammates:</p>
   <div class="code-wrap"><pre><code>code dbt/profiles.yml.example</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <p>Same content — replace the password line:</p>
-  <div class="code-wrap"><pre><code>      password: YOUR_PASSWORD_HERE  # copy from .env</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <p>Type this exactly, then save with <strong>⌘ + S</strong>. This is the file you commit to GitHub so teammates know exactly what to fill in:</p>
+  <div class="code-wrap"><pre><code># profiles.yml.example
+# Safe template — copy this to profiles.yml and fill in your details.
+# This file IS committed to GitHub. profiles.yml is NOT.
+#
+# Steps:
+#   1. cp dbt/profiles.yml.example dbt/profiles.yml
+#   2. Replace YOUR_NAME with your first name (lowercase, no spaces)
+#   3. Replace YOUR_PASSWORD_HERE with the password from .env
+
+resource_utilization:
+
+  target: personal   # default — always your personal schema
+
+  outputs:
+
+    # ── PERSONAL ─────────────────────────────────────────────────────
+    # Your private schemas. Only you write here.
+    # Run: dbt run  (personal is the default)
+    personal:
+      type: postgres
+      host: postgres             # dbt runs inside Docker — use container name
+      port: 5432
+      user: mds_user
+      password: YOUR_PASSWORD_HERE   # copy from .env
+      dbname: btg_resource_utilization
+      schema: dbt_YOUR_NAME          # e.g. dbt_alice, dbt_john
+      threads: 4
+
+    # ── CI ───────────────────────────────────────────────────────────
+    # GitHub Actions uses this on Pull Requests. Never run manually.
+    ci:
+      type: postgres
+      host: postgres             # dbt runs inside Docker — use container name
+      port: 5432
+      user: mds_user
+      password: YOUR_PASSWORD_HERE
+      dbname: btg_resource_utilization
+      schema: ci
+      threads: 4
+
+    # ── DEV ──────────────────────────────────────────────────────────
+    # Shared team schemas. Run manually after merge to verify full project.
+    # Run: dbt build --target dev
+    dev:
+      type: postgres
+      host: postgres             # dbt runs inside Docker — use container name
+      port: 5432
+      user: mds_user
+      password: YOUR_PASSWORD_HERE
+      dbname: btg_resource_utilization
+      schema: dev
+      threads: 4
+
+    # ── PRODUCTION ───────────────────────────────────────────────────
+    # Airflow writes here. Metabase reads from here.
+    # Never run dbt --target prod manually.
+    prod:
+      type: postgres
+      host: postgres             # inside Docker, use container name not localhost
+      port: 5432
+      user: mds_user
+      password: YOUR_PASSWORD_HERE
+      dbname: btg_resource_utilization
+      schema: prod
+      threads: 4</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Why is the order personal → ci → dev → prod?</strong>
+    This matches the order each environment is used in the workflow:<br><br>
+    You develop in <strong>personal</strong> → push branch, open a PR → <strong>CI</strong> runs automatically and tests modified models → PR merges to main → you run <strong>dev</strong> manually to verify the full project builds → <strong>prod</strong> deploys tonight via Airflow.<br><br>
+    CI comes before dev because CI runs on the PR before anything merges. Dev runs after the merge as the full-project verification. The order in the file reflects this.
+  </div>
 
   <p>Verify profiles.yml is NOT visible to Git:</p>
   <div class="code-wrap"><pre><code>git status</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
@@ -717,7 +681,38 @@ git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</but
 <section id="step4">
   <div class="step-header"><div class="sc">4</div><h2>Test connection and install packages</h2></div>
 
-  <h3>Step 9a — Test the dbt connection</h3>
+  <div class="callout warning"><strong>Before running any dbt command — set up the dbt shell function first.</strong>
+    dbt is installed inside the Airflow Docker container, not on your Mac. If you run <code>dbt</code> directly on your Mac you will see a <code>TypeError</code> error. The shell function below routes all dbt commands through Docker automatically.
+  </div>
+
+  <h3>Step 4a — Set up the dbt shell function</h3>
+
+  <p>Check if the function already exists:</p>
+  <div class="code-wrap"><pre><code>cat ~/.zshrc | grep -A 5 "^dbt()"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Two possible outcomes:</strong><br><br>
+    <strong>You see the function definition</strong> — already there, skip to the <code>source ~/.zshrc</code> step below.<br><br>
+    <strong>You see nothing</strong> — not there yet, add it now.
+  </div>
+
+  <p>If not there, open your shell config and add the function at the bottom:</p>
+  <div class="code-wrap"><pre><code>code ~/.zshrc</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="code-wrap"><pre><code># dbt shortcut — runs dbt inside the Airflow container
+dbt() {
+  docker compose -f ~/Documents/btg-case-studies/resource-utilization/docker-compose.yml \
+    run --rm airflow-scheduler bash -c \
+    "cd /opt/airflow/dbt && /usr/local/airflow/dbt_venv/bin/dbt $*"
+}</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Save with <strong>⌘ + S</strong>, then load it:</p>
+  <div class="code-wrap"><pre><code>source ~/.zshrc</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Confirm the shell function is active — not the Mac binary:</p>
+  <div class="code-wrap"><pre><code>type dbt</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="checkpoint">You see <code>dbt is a shell function</code>. If you see a file path like <code>/usr/local/bin/dbt</code> or <code>/Users/yourname/Library/Python/...</code> — the Mac version is still winning. Re-run <code>source ~/.zshrc</code> and check the function is at the very bottom of the file.</div>
+
+  <h3>Step 4b — Test the dbt connection</h3>
   <p>Confirm dbt can find your config files and reach PostgreSQL:</p>
   <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
 dbt debug</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
@@ -731,17 +726,38 @@ dbt debug</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</bu
 
   <div class="checkpoint">The last line says <code>All checks passed!</code></div>
 
-  <h3>Step 9b — Install dbt packages</h3>
+  <h3>Step 4c — Install dbt packages</h3>
 
-  <p>This project uses two dbt packages listed in <code>dbt/packages.yml</code>. Confirm the file is in the repo:</p>
+  <p>This project uses two dbt packages. First create the <code>packages.yml</code> file that lists them:</p>
+
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+code dbt/packages.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Type this exactly, then save with <strong>⌘ + S</strong>:</p>
+  <div class="code-wrap"><pre><code>packages:
+  - package: dbt-labs/dbt_utils
+    version: [">=1.0.0", "<2.0.0"]
+
+  - package: dbt-labs/dbt_project_evaluator
+    version: [">=0.8.0", "<1.0.0"]</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What are these packages?</strong><br><br>
+    <code>dbt_utils</code> — reusable SQL macros from dbt Labs: date spine generation, surrogate keys, safe math operations. Several models in this project use these.<br><br>
+    <code>dbt_project_evaluator</code> — audits your dbt project against best practices. Flags models without tests, undocumented sources, or broken lineage.<br><br>
+    The version ranges (<code>>=1.0.0, &lt;2.0.0</code>) pin packages to a major version so you get bug fixes automatically but never get a breaking change.
+  </div>
+
+  <p>Verify it was saved correctly:</p>
   <div class="code-wrap"><pre><code>cat dbt/packages.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-  <div class="checkpoint">You see <code>dbt_utils</code> and <code>dbt_project_evaluator</code> listed.</div>
+  <div class="checkpoint">You see both <code>dbt_utils</code> and <code>dbt_project_evaluator</code> listed.</div>
 
-  <p>Create the <code>dbt_packages</code> folder inside the dbt project:</p>
-  <div class="code-wrap"><pre><code>mkdir -p dbt/dbt_packages</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-  <div class="callout info"><strong>Why create it manually?</strong><code>dbt deps</code> creates this folder automatically when it runs — but creating it first makes the project structure visible before any packages are installed. It also prevents a permissions error in some Docker environments where the container cannot create new directories inside a mounted volume.</div>
+  <p>Commit it:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add dbt/packages.yml
+git commit -m "add dbt packages.yml"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <p>Install the packages:</p>
+  <p>Now install the packages:</p>
   <div class="code-wrap"><pre><code>dbt deps</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <div class="callout info"><strong>What is dbt deps?</strong>Reads <code>packages.yml</code> and downloads the listed packages into <code>dbt/dbt_packages/</code>. Exactly like <code>pip install -r requirements.txt</code> in Python.<br><br>
@@ -816,15 +832,11 @@ code database/setup/001_setup_database.sql</code></pre><button class="copy-btn" 
     <li>Personal environment schemas (replace <code>yourname</code>): <code>dbt_yourname_staging_silver</code>, <code>dbt_yourname_mart_gold</code></li>
     <li>Dev environment schemas: <code>dev_staging_silver</code>, <code>dev_mart_gold</code></li>
     <li>CI environment schemas: <code>ci_staging_silver</code>, <code>ci_mart_gold</code></li>
-    <li>Production schemas: <code>staging_silver</code>, <code>mart_gold</code>, <code>snapshots</code></li>
+    <li>Production schemas: <code>prod_staging_silver</code>, <code>prod_mart_gold</code>, <code>prod_snapshots</code></li>
     <li>Data science schema: <code>staging_silver_ds</code></li>
     <li>Roles and grants for each schema</li>
     <li>A verification query listing all schemas</li>
   </ul>
-
-  <div class="callout info"><strong>Why do prod schemas have no prefix?</strong>
-    This is the <code>generate_schema_name</code> macro from Step 2b at work. In production, dbt uses only the custom schema name (<code>staging_silver</code>, <code>mart_gold</code>) with no target prefix. In every other environment, the target schema is prepended (<code>dev_staging_silver</code>, <code>ci_mart_gold</code>). This is why you create schemas with these exact names here — they must match what dbt will produce when it runs.
-  </div>
 
   <div class="callout warning"><strong>Before running — edit the script to set your name.</strong>
     Open <code>database/setup/001_setup_database.sql</code> in VS Code and find every occurrence of <code>yourname</code>. Replace them all with your actual first name (lowercase).<br><br>
@@ -846,7 +858,7 @@ git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</but
     <code>&lt; database/setup/001_setup_database.sql</code> — pipe the SQL file into psql line by line.
   </div>
 
-  <div class="checkpoint">The verification query returns all schemas including your personal ones (<code>dbt_yourname_staging_silver</code>, <code>dbt_yourname_mart_gold</code>), dev schemas (<code>dev_staging_silver</code>, <code>dev_mart_gold</code>), CI schemas (<code>ci_staging_silver</code>, <code>ci_mart_gold</code>), and clean prod schemas (<code>staging_silver</code>, <code>mart_gold</code>).</div>
+  <div class="checkpoint">The verification query returns all schemas including your personal ones (<code>dbt_yourname_staging_silver</code>, <code>dbt_yourname_mart_gold</code>), dev schemas (<code>dev_staging_silver</code>, <code>dev_mart_gold</code>), CI schemas (<code>ci_staging_silver</code>, <code>ci_mart_gold</code>), and prod schemas (<code>prod_staging_silver</code>, <code>prod_mart_gold</code>).</div>
 
   <p>Refresh pgAdmin — you should now see all schemas under <strong>btg_resource_utilization → Schemas</strong>.</p>
 
@@ -893,7 +905,7 @@ code database/setup/002_create_bronze_tables.sql</code></pre><button class="copy
     These are loaded once into the bronze config tables using a manually triggered Airflow DAG.
   </div>
 
-  <h3>Step 3a — Get the JSON files into database/config/</h3>
+  <h3>Step 7a — Get the JSON files into database/config/</h3>
 
   <div class="callout info"><strong>Two ways to follow this runbook:</strong><br><br>
     <strong>Option A — Cloned the repo:</strong> The JSON files are already committed and sitting in <code>database/config/</code>. Just confirm they are there and move on.<br><br>
@@ -912,9 +924,24 @@ git add .
 git commit -m "add model config JSON files"
 git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <h3>Step 3b — Create the Airflow DAG</h3>
+  <h3>Step 7b — Create the Airflow DAG</h3>
 
-  <div class="callout info"><strong>What is a DAG?</strong>A DAG (Directed Acyclic Graph) is a Python file that defines a workflow — what tasks to run and in what order. Our DAG has two tasks: load model_configuration.json, then load model_region_availability.json. It only runs when you manually trigger it.</div>
+  <div class="callout info"><strong>What is a DAG?</strong>
+    DAG stands for Directed Acyclic Graph. In Airflow, a DAG is a Python file that defines a complete workflow — what tasks to run, in what order, and when.<br><br>
+    <strong>Directed</strong> — tasks flow in one direction. Task A must finish before Task B starts.<br>
+    <strong>Acyclic</strong> — no loops. A task can never depend on itself or create a cycle.<br>
+    <strong>Graph</strong> — the tasks and their dependencies form a visual graph you can see in the Airflow UI.<br><br>
+    This DAG has two tasks: load <code>model_configuration.json</code> first, then load <code>model_region_availability.json</code>. The <code>>></code> operator at the bottom of the file defines that dependency. It only runs when you manually trigger it — never on a schedule.
+  </div>
+
+  <div class="callout info"><strong>What do the Python imports do?</strong><br><br>
+    <code>import json</code> — Python's built-in library for reading JSON files. Used to parse the config files from <code>database/config/</code> into Python dictionaries.<br><br>
+    <code>import os</code> — Python's built-in library for file system operations. Used here for <code>os.path.join()</code> to build the full file path to each JSON file.<br><br>
+    <code>from datetime import datetime</code> — Python's built-in date library. Used for <code>start_date=datetime(2026, 1, 1)</code> — every Airflow DAG requires a start date even if it never runs on a schedule.<br><br>
+    <code>import psycopg2</code> — the PostgreSQL adapter for Python. This is what actually connects to the database and runs the INSERT statements. It is the Python equivalent of pgAdmin's query tool — but programmatic.<br><br>
+    <code>from airflow import DAG</code> — imports the DAG class from Airflow. This is what turns this Python file into an Airflow workflow that appears in the UI.<br><br>
+    <code>from airflow.operators.python import PythonOperator</code> — imports the PythonOperator. An operator is a template for a task. The PythonOperator runs a Python function as an Airflow task. Here it runs <code>load_model_configuration()</code> and <code>load_model_region_availability()</code> as separate trackable tasks.
+  </div>
 
   <div class="code-wrap"><pre><code>code airflow/dags/load_config_bronze.py</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
@@ -1059,14 +1086,108 @@ with DAG(
     # Load model config first, then region availability
     task_models >> task_regions</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="callout info"><strong>Key things to understand:</strong><br><br>
-    <code>schedule=None</code> — never runs automatically. Only runs when you manually trigger it.<br><br>
-    <code>ON CONFLICT ... DO NOTHING</code> — if the record already exists, the insert is silently skipped. Makes the DAG safe to run more than once.<br><br>
-    <code>routing_strategy</code> and <code>inference_region</code> from the JSON are skipped intentionally — not columns in the bronze table, will be derived in silver.<br><br>
+  <div class="callout info"><strong>What does <code>load_model_configuration()</code> do — line by line?</strong><br><br>
+
+    <strong>1. Build the file path</strong><br>
+    <code>filepath = os.path.join(CONFIG_DIR, "model_configuration.json")</code><br>
+    Combines the folder path (<code>/opt/airflow/database/config</code>) with the filename to produce the full path: <code>/opt/airflow/database/config/model_configuration.json</code>.<br><br>
+
+    <strong>2. Open and parse the JSON file</strong><br>
+    <code>with open(filepath) as f:</code><br>
+    <code>&nbsp;&nbsp;&nbsp;&nbsp;data = json.load(f)</code><br>
+    Opens the JSON file and loads its contents into a Python dictionary. <code>json.load()</code> converts the JSON structure into Python objects — lists become Python lists, objects become Python dictionaries.<br><br>
+
+    <strong>3. Get the list of records</strong><br>
+    <code>models = data["models"]</code><br>
+    The JSON file has a top-level key called <code>"models"</code> that contains the list of 20 records. This line extracts just that list.<br><br>
+
+    <strong>4. Connect to PostgreSQL</strong><br>
+    <code>conn = psycopg2.connect(**DB_CONN)</code><br>
+    Opens a connection to PostgreSQL using the credentials defined in <code>DB_CONN</code> at the top of the file. The <code>**</code> unpacks the dictionary into keyword arguments — equivalent to writing <code>psycopg2.connect(host="postgres", port=5432, ...)</code>.<br><br>
+
+    <strong>5. Create a cursor</strong><br>
+    <code>cur = conn.cursor()</code><br>
+    A cursor is the object you use to execute SQL statements. Think of it as a pointer into the database — you send SQL through the cursor and get results back through it.<br><br>
+
+    <strong>6. Loop through each record and insert it</strong><br>
+    <code>for m in models:</code><br>
+    <code>&nbsp;&nbsp;&nbsp;&nbsp;cur.execute("""INSERT INTO ...""", m)</code><br>
+    Loops through each of the 20 model records. For each one, runs an INSERT statement. The <code>%(column_name)s</code> placeholders are safely replaced with values from the dictionary <code>m</code> — this prevents SQL injection.<br><br>
+
+    <strong>7. Check if the row was inserted or skipped</strong><br>
+    <code>if cur.rowcount == 1:</code><br>
+    <code>&nbsp;&nbsp;&nbsp;&nbsp;inserted += 1</code><br>
+    <code>else:</code><br>
+    <code>&nbsp;&nbsp;&nbsp;&nbsp;skipped += 1</code><br>
+    <code>cur.rowcount</code> tells you how many rows were affected by the last SQL statement. If 1 — a new row was inserted. If 0 — the <code>ON CONFLICT DO NOTHING</code> clause fired, meaning the record already existed and was skipped. This counter is printed at the end so you can see exactly what happened.<br><br>
+
+    <strong>8. Commit the transaction</strong><br>
+    <code>conn.commit()</code><br>
+    PostgreSQL uses transactions — changes are not permanently saved until you commit. Without this line, all the inserts would be lost when the connection closes. Think of it as clicking Save.<br><br>
+
+    <strong>9. Close the cursor and connection</strong><br>
+    <code>cur.close()</code><br>
+    <code>conn.close()</code><br>
+    Releases the database resources. Always close connections when you are done — leaving them open wastes database connections and can cause issues at scale.<br><br>
+
+    <strong>10. Print the result</strong><br>
+    <code>print(f"Done — inserted: {inserted}, skipped (already exists): {skipped}")</code><br>
+    This line appears in the Airflow task logs. When you click a task in the Airflow UI and view its logs, this is the line that tells you how many records were loaded vs already existed.
+  </div>
+
+  <div class="callout info"><strong>What does the DAG definition block do — line by line?</strong><br><br>
+
+    <strong>1. with DAG(...) as dag:</strong><br>
+    The <code>with</code> block creates the DAG object and registers everything inside it as part of this workflow. The <code>as dag</code> part gives it a variable name so Airflow can find it when it scans the file.<br><br>
+
+    <strong>2. dag_id</strong><br>
+    <code>dag_id="load_config_bronze"</code><br>
+    The unique name for this DAG in Airflow. This is exactly what you see in the Airflow UI DAG list. Must be unique across all DAGs — no two DAGs can share the same <code>dag_id</code>.<br><br>
+
+    <strong>3. description</strong><br>
+    <code>description="One-time load of model config JSON files into bronze tables"</code><br>
+    A human-readable description that appears in the Airflow UI. Purely for documentation — has no effect on how the DAG runs.<br><br>
+
+    <strong>4. start_date</strong><br>
+    <code>start_date=datetime(2026, 1, 1)</code><br>
+    Every Airflow DAG requires a start date — even manual ones. It tells Airflow "this DAG did not exist before this date." For scheduled DAGs, Airflow uses this to calculate missed runs to backfill. For manual-only DAGs like this one, it is just a required field — the date itself does not matter much.<br><br>
+
+    <strong>5. schedule</strong><br>
+    <code>schedule=None</code><br>
+    Tells Airflow never to trigger this DAG automatically. Common values are:<br>
+    <code>schedule="0 6 * * *"</code> — run every day at 6am<br>
+    <code>schedule="@daily"</code> — run once a day<br>
+    <code>schedule=None</code> — never run automatically, only when manually triggered<br>
+    When <code>schedule=None</code>, the only way to run it is to click the ▶ play button in the UI.<br><br>
+
+    <strong>6. catchup</strong><br>
+    <code>catchup=False</code><br>
+    If Airflow was down and missed scheduled runs, <code>catchup=True</code> would backfill all those missed runs automatically. <code>catchup=False</code> says ignore any missed runs. For a manual DAG this has no practical effect, but it is always good practice to set it to <code>False</code> to avoid accidental backfills.<br><br>
+
+    <strong>7. tags</strong><br>
+    <code>tags=["bronze", "config", "one-time"]</code><br>
+    Labels that appear in the Airflow UI. You can filter the DAG list by tag. Purely organisational — no effect on execution.<br><br>
+
+    <strong>8. First task</strong><br>
+    <code>task_models = PythonOperator(task_id="load_model_configuration", python_callable=load_model_configuration)</code><br>
+    Creates a task that runs the <code>load_model_configuration()</code> Python function. <code>task_id</code> is the unique name for this task — what you see as a circle in the Airflow graph view. <code>python_callable</code> points to the function to run.<br><br>
+
+    <strong>9. Second task</strong><br>
+    <code>task_regions = PythonOperator(task_id="load_model_region_availability", python_callable=load_model_region_availability)</code><br>
+    Same pattern — creates a second task that runs the <code>load_model_region_availability()</code> function.<br><br>
+
+    <strong>10. Dependency</strong><br>
+    <code>task_models >> task_regions</code><br>
+    The <code>>></code> operator defines execution order. It means "task_models must complete successfully before task_regions can start." If <code>task_models</code> fails, <code>task_regions</code> never runs. In the Airflow UI you see this as two circles connected by an arrow — the DAG graph.
+  </div>
+
+  <div class="callout info"><strong>Other things to note:</strong><br><br>
+    <code>ON CONFLICT ... DO NOTHING</code> — if a record already exists in the table, the insert is silently skipped. This makes the DAG safe to run more than once without creating duplicates.<br><br>
+    <code>routing_strategy</code> and <code>inference_region</code> from the JSON are skipped intentionally — they are not columns in the bronze table and will be derived in the silver layer.<br><br>
     <code>/opt/airflow/database/config</code> — inside the container, maps to your local <code>database/config/</code> via the volume mount configured in Runbook 1.
   </div>
 
-  <h3>Step 3c — Trigger the DAG from the Airflow UI</h3>
+  <h3>Step 7c — Trigger the DAG from the Airflow UI</h3>
 
   <ol>
     <li>Open <a href="http://localhost:8080" target="_blank">localhost:8080</a> — login: <code>admin</code> / <code>admin</code></li>
@@ -1174,6 +1295,16 @@ LIMIT 5;</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</but
 <!-- TROUBLESHOOTING -->
 <section id="troubleshooting">
   <div class="step-header"><div class="sc gray">?</div><h2>Troubleshooting</h2></div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">TypeError: __init__() got an unexpected keyword argument 'buffer_size' <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>You are running the dbt version installed directly on your Mac instead of the one inside Docker. The Mac version is old and incompatible. Fix it by making sure the shell function is loaded:</p>
+      <div class="code-wrap"><pre><code>source ~/.zshrc
+type dbt</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>You should see <code>dbt is a shell function</code>. If you see a file path, the Mac version is still winning. Check that the function definition is at the <strong>bottom</strong> of <code>~/.zshrc</code> — it must come after any other dbt-related lines. Then re-run <code>source ~/.zshrc</code>.</p>
+    </div>
+  </div>
 
   <div class="trouble-item">
     <div class="trouble-q" onclick="t(this)">dbt debug says "could not connect to server" <span class="arr">▼</span></div>

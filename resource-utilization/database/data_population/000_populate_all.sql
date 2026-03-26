@@ -1,3 +1,36 @@
+-- ============================================================
+-- 000_populate_all.sql
+-- Combined data population script for the full bronze layer.
+-- Lives in: database/data_population/
+--
+-- Run order matters — execute in this sequence:
+--   PART 1 (003): customer_details, resource tables,
+--                 token usage open source & proprietary
+--   PART 2 (004): quota_default_rate_limits,
+--                 quota_customer_rate_limit_adjustments
+--                 (depends on config tables loaded by Airflow DAG)
+--   PART 3 (005): revenue_account_daily
+--                 (depends on token usage tables from Part 1)
+--   PART 4 (006): quota_customer_rate_limit_requests
+--
+-- Prerequisites:
+--   - 000_setup_all.sql must have been run first
+--   - Airflow DAG load_config_bronze must have been triggered
+--     (loads config_model_dimensions and config_model_region_availability)
+--   - Date range: 2026-01-13 to 2026-02-26
+--   - Accounts: ACC001 - ACC010
+-- ============================================================
+
+
+-- ============================================================
+-- PART 1: Core Bronze Seed Data
+-- Source: 003_seed_bronze_tables.sql
+-- Tables: customer_details, resource_accelerator_inventory,
+--         resource_model_instance_allocation, resource_model_utilization,
+--         inference_user_token_usage_open_source,
+--         inference_user_token_usage_proprietary
+-- ============================================================
+
 -- =============================================================================
 -- Bronze Layer Seed Data - January 2026 (7 days: Jan 13-19)
 -- =============================================================================
@@ -454,3 +487,827 @@ SELECT 'inference_user_token_usage_open_source',  COUNT(*) FROM raw_bronze.infer
 UNION ALL
 SELECT 'inference_user_token_usage_proprietary',  COUNT(*) FROM raw_bronze.inference_user_token_usage_proprietary
 ORDER BY table_name;
+
+
+-- ============================================================
+-- PART 2: Quota and Rate Limit Seed Data
+-- Source: 004_seed_quota_rate_limit_tables.sql
+-- Tables: quota_default_rate_limits,
+--         quota_customer_rate_limit_adjustments
+-- Depends on: config_model_dimensions and
+--             config_model_region_availability (loaded by Airflow DAG)
+-- ============================================================
+
+-- =============================================================================
+-- Seed Data: quota_default_rate_limits & quota_customer_rate_limit_adjustments
+-- =============================================================================
+-- Date: 2026-02-25
+-- Author: Data Engineering Team
+-- Purpose: Populate rate limit tables using model configuration and region
+--          availability as the source of truth.
+--
+-- Logic:
+--   quota_default_rate_limits
+--     → One row per active model_variant + source_region + inference_scope
+--     → Limits derived from model capacity metrics in config_model_dimensions
+--       (max_rps → requests_per_minute, tokens_per_second → tokens_per_minute/day)
+--     → Only active regions from config_model_region_availability (is_active = TRUE)
+--
+--   quota_customer_rate_limit_adjustments
+--     → One row per customer who has been granted a non-default limit
+--     → Strategic (Enterprise) accounts seeded with higher limits
+--     → One account seeded with a lower limit (risk/fraud scenario)
+--     → Limits expressed as a multiplier over the default
+--
+-- Snapshot date: 2026-01-13 (aligns with seed data in 003_seed_bronze_tables.sql)
+-- =============================================================================
+
+
+-- =============================================================================
+-- TABLE 1: quota_default_rate_limits
+-- =============================================================================
+-- Derived from:
+--   config_model_dimensions   → capacity metrics (max_rps, tokens_per_second)
+--   config_model_region_availability → active regions per model
+--
+-- Rate limit derivation logic:
+--   requests_per_minute = max_rps * 60
+--   tokens_per_minute   = ROUND(tokens_per_second / replicas * ideal_concurrency / 1000) * 1000
+--   tokens_per_day      = tokens_per_minute * 60 * 24
+--
+-- These are conservative defaults — a fraction of total platform capacity
+-- allocated per customer to ensure fair use across all accounts.
+-- =============================================================================
+
+INSERT INTO raw_bronze.quota_default_rate_limits (
+    model_variant,
+    inference_scope,
+    source_region,
+    requests_per_minute,
+    tokens_per_minute,
+    tokens_per_day,
+    snapshot_date,
+    source_file
+)
+
+-- Derived from config_model_dimensions + config_model_region_availability
+-- Using active regions only (is_active = TRUE)
+
+SELECT
+    mra.model_variant,
+    cmd.inference_scope,
+    mra.source_region,
+
+    -- requests_per_minute: max_rps * 60, capped at a per-customer default
+    -- Conservative default: 10% of max_rps * 60 to allow fair multi-tenant sharing
+    GREATEST(60, ROUND((cmd.max_rps * 60 * 0.10) / 10.0) * 10)     AS requests_per_minute,
+
+    -- tokens_per_minute: derived from tokens_per_second scaled to per-customer share
+    -- Assumes up to 100 concurrent customers sharing capacity (1% of total)
+    GREATEST(10000, ROUND((cmd.tokens_per_second * 60 * 0.01) / 1000.0) * 1000)
+                                                                      AS tokens_per_minute,
+
+    -- tokens_per_day: tokens_per_minute * 60 * 24
+    GREATEST(10000, ROUND((cmd.tokens_per_second * 60 * 0.01) / 1000.0) * 1000) * 60 * 24
+                                                                      AS tokens_per_day,
+
+    '2026-01-13'::DATE                                                AS snapshot_date,
+    'derived:config_model_dimensions+config_model_region_availability' AS source_file
+
+FROM raw_bronze.config_model_region_availability mra
+JOIN raw_bronze.config_model_dimensions cmd
+    ON mra.model_variant = cmd.model_variant
+
+WHERE mra.is_active = TRUE
+
+-- Use latest snapshot for each table to avoid duplicates from historical loads
+  AND mra.snapshot_date = (
+        SELECT MAX(snapshot_date)
+        FROM raw_bronze.config_model_region_availability
+        WHERE model_variant = mra.model_variant
+          AND source_region = mra.source_region
+  )
+  AND cmd.snapshot_date = (
+        SELECT MAX(snapshot_date)
+        FROM raw_bronze.config_model_dimensions
+        WHERE model_variant = cmd.model_variant
+  )
+
+ORDER BY mra.model_variant, mra.source_region;
+
+
+-- =============================================================================
+-- TABLE 2: quota_customer_rate_limit_adjustments
+-- =============================================================================
+-- Seeded for customers who have been granted non-default limits.
+-- Source accounts from customer_details (003_seed_bronze_tables.sql):
+--
+--   ACC001 Acme AI Corp       Enterprise / Strategic  → 5x default (high volume FinTech)
+--   ACC002 DataStream Inc     Enterprise / Strategic  → 3x default (SaaS platform)
+--   ACC005 GlobalBank Ltd     Enterprise / Strategic  → 5x default (regulated, high volume)
+--   ACC007 AsiaPay Systems    Enterprise / Strategic  → 3x default (APAC FinTech)
+--   ACC010 CloudNative Co     Enterprise / Strategic  → 3x default (SaaS)
+--   ACC009 RetailBoost Ltd    SMB / inactive          → 0.5x default (risk reduction)
+--
+-- Limits are expressed relative to quota_default_rate_limits values.
+-- Only models and regions actively used by each account
+-- (based on inference_user_token_usage_proprietary seed data).
+-- =============================================================================
+
+INSERT INTO raw_bronze.quota_customer_rate_limit_adjustments (
+    account_id,
+    model_variant,
+    inference_scope,
+    source_region,
+    requests_per_minute,
+    tokens_per_minute,
+    tokens_per_day,
+    adjustment_reason,
+    ticket_link,
+    approved_by,
+    effective_date,
+    expiry_date,
+    snapshot_date,
+    source_file
+)
+VALUES
+
+-- ---------------------------------------------------------------------------
+-- ACC001: Acme AI Corp — Enterprise Strategic FinTech
+-- Models used: claude-sonnet-4, claude-3.5-sonnet | Region: us-east-1
+-- Adjustment: 5x default limits
+-- ---------------------------------------------------------------------------
+(
+    'ACC001',
+    'claude-sonnet-4_200k_20250514',
+    'global',
+    'us-east-1',
+    18000,          -- 5x default RPM
+    36000000,       -- 5x default TPM
+    51840000000,    -- 5x default TPD
+    'Enterprise Strategic account with high-volume FinTech workloads requiring sustained throughput above default tier',
+    'https://tickets.internal/QUOTA-1001',
+    'CS-Enterprise-Team',
+    '2025-06-01',
+    NULL,
+    '2026-01-13',
+    'manual:cs-enterprise-team'
+),
+(
+    'ACC001',
+    'claude-3.5-sonnet_200k_20241022',
+    'global',
+    'us-east-1',
+    16500,
+    33000000,
+    47520000000,
+    'Enterprise Strategic account with high-volume FinTech workloads requiring sustained throughput above default tier',
+    'https://tickets.internal/QUOTA-1002',
+    'CS-Enterprise-Team',
+    '2025-06-01',
+    NULL,
+    '2026-01-13',
+    'manual:cs-enterprise-team'
+),
+
+-- ---------------------------------------------------------------------------
+-- ACC002: DataStream Inc — Enterprise Strategic SaaS
+-- Models used: gpt-4o | Region: us-west-2
+-- Adjustment: 3x default limits
+-- ---------------------------------------------------------------------------
+(
+    'ACC002',
+    'gpt-4o_128k_20240513',
+    'global',
+    'us-west-2',
+    10800,          -- 3x default RPM
+    21600000,       -- 3x default TPM
+    31104000000,    -- 3x default TPD
+    'SaaS platform embedding model into customer-facing product with predictable high-volume batch processing needs',
+    'https://tickets.internal/QUOTA-1003',
+    'CS-Enterprise-Team',
+    '2025-07-15',
+    NULL,
+    '2026-01-13',
+    'manual:cs-enterprise-team'
+),
+
+-- ---------------------------------------------------------------------------
+-- ACC005: GlobalBank Ltd — Enterprise Strategic FinTech (UK)
+-- Models used: claude-3-opus, claude-sonnet-4 | Region: eu-west-1
+-- Adjustment: 5x default limits (regulated industry SLA requirements)
+-- ---------------------------------------------------------------------------
+(
+    'ACC005',
+    'claude-3-opus_200k_20240229',
+    'multi-region',
+    'eu-west-1',
+    10500,          -- 5x default RPM
+    22500000,       -- 5x default TPM
+    32400000000,    -- 5x default TPD
+    'Regulated financial institution with SLA-backed processing requirements and data residency constraints in EU',
+    'https://tickets.internal/QUOTA-1004',
+    'CS-Enterprise-Team',
+    '2025-05-12',
+    NULL,
+    '2026-01-13',
+    'manual:cs-enterprise-team'
+),
+(
+    'ACC005',
+    'claude-sonnet-4_200k_20250514',
+    'global',
+    'eu-west-1',
+    18000,
+    36000000,
+    51840000000,
+    'Regulated financial institution with SLA-backed processing requirements and data residency constraints in EU',
+    'https://tickets.internal/QUOTA-1005',
+    'CS-Enterprise-Team',
+    '2025-08-01',
+    NULL,
+    '2026-01-13',
+    'manual:cs-enterprise-team'
+),
+
+-- ---------------------------------------------------------------------------
+-- ACC007: AsiaPay Systems — Enterprise Strategic FinTech (APAC)
+-- Models used: claude-sonnet-4 | Region: ap-northeast-1
+-- Adjustment: 3x default limits
+-- ---------------------------------------------------------------------------
+(
+    'ACC007',
+    'claude-sonnet-4_200k_20250514',
+    'global',
+    'ap-northeast-1',
+    10800,          -- 3x default RPM
+    21600000,       -- 3x default TPM
+    31104000000,    -- 3x default TPD
+    'APAC FinTech with peak transaction processing demands during Asian market hours',
+    'https://tickets.internal/QUOTA-1006',
+    'CS-Enterprise-Team',
+    '2025-09-01',
+    NULL,
+    '2026-01-13',
+    'manual:cs-enterprise-team'
+),
+
+-- ---------------------------------------------------------------------------
+-- ACC010: CloudNative Co — Enterprise Strategic SaaS
+-- Models used: claude-3.5-sonnet | Region: us-west-2
+-- Adjustment: 3x default limits
+-- ---------------------------------------------------------------------------
+(
+    'ACC010',
+    'claude-3.5-sonnet_200k_20241022',
+    'global',
+    'us-west-2',
+    10800,
+    21600000,
+    31104000000,
+    'Cloud-native SaaS platform with multi-tenant architecture driving sustained inference volume across customer base',
+    'https://tickets.internal/QUOTA-1007',
+    'CS-Enterprise-Team',
+    '2025-10-01',
+    NULL,
+    '2026-01-13',
+    'manual:cs-enterprise-team'
+),
+
+-- ---------------------------------------------------------------------------
+-- ACC009: RetailBoost Ltd — SMB / Inactive (risk reduction)
+-- Models used: gpt-4o, claude-3.5-sonnet | Region: eu-west-1
+-- Adjustment: 0.5x default limits (downward adjustment due to account risk)
+-- is_active = FALSE in customer_details; limits reduced pending review
+-- ---------------------------------------------------------------------------
+(
+    'ACC009',
+    'gpt-4o_128k_20240513',
+    'global',
+    'eu-west-1',
+    1800,           -- 0.5x default RPM
+    3600000,        -- 0.5x default TPM
+    5184000000,     -- 0.5x default TPD
+    'Account flagged inactive with unresolved billing issues; limits reduced pending account review and reactivation',
+    'https://tickets.internal/QUOTA-1008',
+    'Risk-and-Trust-Team',
+    '2025-06-15',
+    '2026-03-01',   -- expiry: limits reinstated if account reactivates
+    '2026-01-13',
+    'manual:risk-and-trust-team'
+),
+(
+    'ACC009',
+    'claude-3.5-sonnet_200k_20241022',
+    'global',
+    'eu-west-1',
+    1650,
+    3300000,
+    4752000000,
+    'Account flagged inactive with unresolved billing issues; limits reduced pending account review and reactivation',
+    'https://tickets.internal/QUOTA-1009',
+    'Risk-and-Trust-Team',
+    '2025-06-15',
+    '2026-03-01',
+    '2026-01-13',
+    'manual:risk-and-trust-team'
+);
+
+
+-- =============================================================================
+-- VERIFICATION
+-- =============================================================================
+
+SELECT
+    'quota_default_rate_limits'             AS table_name,
+    COUNT(*)                                AS row_count,
+    COUNT(DISTINCT model_variant)           AS distinct_models,
+    COUNT(DISTINCT source_region)           AS distinct_regions,
+    COUNT(DISTINCT inference_scope)         AS distinct_scopes
+FROM raw_bronze.quota_default_rate_limits
+
+UNION ALL
+
+SELECT
+    'quota_customer_rate_limit_adjustments' AS table_name,
+    COUNT(*)                                AS row_count,
+    COUNT(DISTINCT model_variant)           AS distinct_models,
+    COUNT(DISTINCT source_region)           AS distinct_regions,
+    COUNT(DISTINCT inference_scope)         AS distinct_scopes
+FROM raw_bronze.quota_customer_rate_limit_adjustments;
+
+
+-- Preview default limits by model and region
+SELECT
+    model_variant,
+    inference_scope,
+    source_region,
+    requests_per_minute,
+    tokens_per_minute,
+    tokens_per_day,
+    snapshot_date
+FROM raw_bronze.quota_default_rate_limits
+ORDER BY model_variant, source_region;
+
+
+-- Preview customer adjustments with direction (upgrade vs reduction)
+SELECT
+    c.account_id,
+    c.model_variant,
+    c.source_region,
+    c.requests_per_minute,
+    c.tokens_per_minute,
+    CASE
+        WHEN d.requests_per_minute IS NULL THEN 'no default found'
+        WHEN c.requests_per_minute > d.requests_per_minute THEN 'upgrade'
+        WHEN c.requests_per_minute < d.requests_per_minute THEN 'reduction'
+        ELSE 'same as default'
+    END                                     AS adjustment_direction,
+    ROUND(c.requests_per_minute::NUMERIC / NULLIF(d.requests_per_minute, 0), 1)
+                                            AS rpm_multiplier_vs_default,
+    c.effective_date,
+    c.expiry_date,
+    c.approved_by
+FROM raw_bronze.quota_customer_rate_limit_adjustments c
+LEFT JOIN raw_bronze.quota_default_rate_limits d
+    ON  c.model_variant   = d.model_variant
+    AND c.source_region   = d.source_region
+    AND c.inference_scope = d.inference_scope
+ORDER BY account_id, model_variant;
+
+
+-- ============================================================
+-- PART 3: Revenue Account Daily Seed Data
+-- Source: 005_seed_revenue_account_daily.sql
+-- Tables: revenue_account_daily
+-- Depends on: inference_user_token_usage_proprietary and
+--             inference_user_token_usage_open_source (Part 1)
+-- ============================================================
+
+-- =============================================================================
+-- Seed Data: revenue_account_daily
+-- =============================================================================
+-- Date: 2026-02-25
+-- Author: Data Engineering Team
+-- Purpose: Populate daily revenue table from inference usage tables
+--          for Jan 13-19 2026 (aligns with 003_seed_bronze_tables.sql)
+--
+-- Source tables:
+--   raw_bronze.inference_user_token_usage_proprietary
+--   raw_bronze.inference_user_token_usage_open_source
+--
+-- Pricing logic:
+--   Realistic per-model pricing based on public API rates (per 1M tokens)
+--   Defined in CTE: model_pricing
+--
+-- Savings plan:
+--   Applied to Strategic/Enterprise accounts: ACC001, ACC002, ACC005, ACC007, ACC010
+--   Rate: 15% of gross revenue (committed use discount)
+--
+-- Discount:
+--   Strategic segment:  5% negotiated contract discount
+--   Commercial segment: 2% volume discount
+--   SMB segment:        0% no discount
+--
+-- product_sku: bedrock_core (all records)
+-- billing_type: derived from account segment
+--   Strategic  → savings-plan
+--   Commercial → pay-as-you-go
+--   SMB        → pay-as-you-go
+--
+-- currency_code:
+--   US, CA accounts → USD
+--   UK (ACC005)     → GBP
+--   DE (ACC006)     → EUR
+--   SG (ACC007)     → USD (billed in USD)
+--   ES (ACC009)     → EUR
+-- =============================================================================
+
+
+INSERT INTO raw_bronze.revenue_account_daily (
+    account_id,
+    product_sku,
+    model_variant,
+    inference_scope,
+    region,
+    gross_rev_input_tokens,
+    gross_rev_output_tokens,
+    gross_rev_cache_read_tokens,
+    gross_rev_cache_write_tokens,
+    savings_plan,
+    discount_amount,
+    currency_code,
+    billing_type,
+    revenue_date,
+    snapshot_date,
+    source_file
+)
+
+WITH
+
+-- =============================================================================
+-- Model pricing rates (per 1M tokens, USD)
+-- Based on realistic public API pricing as of early 2026
+-- =============================================================================
+model_pricing AS (
+    SELECT * FROM (VALUES
+        -- Anthropic
+        ('claude-sonnet-4_200k_20250514',       3.000000, 15.000000, 0.300000,  3.750000),
+        ('claude-3.5-sonnet_200k_20241022',     3.000000, 15.000000, 0.300000,  3.750000),
+        ('claude-3-opus_200k_20240229',         15.000000,75.000000, 1.500000, 18.750000),
+        ('claude-3-haiku_200k_20240307',         0.250000,  1.250000, 0.025000,  0.312500),
+        ('claude-3-sonnet_200k_20240229',        3.000000, 15.000000, 0.300000,  3.750000),
+        ('claude-2.1_100k_20231128',             8.000000, 24.000000, 0.800000, 10.000000),
+        -- OpenAI
+        ('gpt-4o_128k_20240513',                 2.500000, 10.000000, 1.250000,  0.000000),
+        ('gpt-4-turbo_128k_20240409',           10.000000, 30.000000, 0.000000,  0.000000),
+        ('gpt-4_8k_20230613',                   30.000000, 60.000000, 0.000000,  0.000000),
+        ('gpt-3.5-turbo_16k_20250125',           0.500000,  1.500000, 0.000000,  0.000000),
+        -- Google
+        ('gemini-1.5-pro_1m_20240214',           3.500000, 10.500000, 0.000000,  0.000000),
+        ('gemini-1.5-flash_1m_20240214',         0.075000,  0.300000, 0.000000,  0.000000),
+        ('gemini-1.0-pro_32k_20231206',          0.500000,  1.500000, 0.000000,  0.000000),
+        -- Meta (open source)
+        ('llama-3.1_70b_20240723',               0.900000,  0.900000, 0.000000,  0.000000),
+        ('llama-3.1_405b_20240723',              5.000000,  5.000000, 0.000000,  0.000000),
+        ('llama-3_8b_20240418',                  0.200000,  0.200000, 0.000000,  0.000000),
+        -- Mistral
+        ('mixtral-8x7b_32k_20231211',            0.700000,  0.700000, 0.000000,  0.000000),
+        ('mistral-large_128k_20240724',          2.000000,  6.000000, 0.000000,  0.000000),
+        ('mistral_7b_32k_20240522',              0.250000,  0.250000, 0.000000,  0.000000),
+        -- Cohere
+        ('command-r-plus_128k_20240404',         3.000000, 15.000000, 0.000000,  0.000000),
+        ('command_128k_20240301',                1.000000,  2.000000, 0.000000,  0.000000),
+        -- AI21
+        ('jamba-1.5-large_256k_20240815',        2.000000,  8.000000, 0.000000,  0.000000)
+    ) AS t (
+        model_variant,
+        price_input_per_1m,
+        price_output_per_1m,
+        price_cache_read_per_1m,
+        price_cache_write_per_1m
+    )
+),
+
+-- =============================================================================
+-- Account attributes for billing context
+-- =============================================================================
+account_attrs AS (
+    SELECT * FROM (VALUES
+        ('ACC001', 'Strategic',  'Enterprise', 'USD', 'savings-plan',   0.15, 0.05),
+        ('ACC002', 'Strategic',  'Enterprise', 'USD', 'savings-plan',   0.15, 0.05),
+        ('ACC003', 'Commercial', 'Mid-Market', 'USD', 'pay-as-you-go',  0.00, 0.02),
+        ('ACC004', 'Commercial', 'SMB',        'USD', 'pay-as-you-go',  0.00, 0.02),
+        ('ACC005', 'Strategic',  'Enterprise', 'GBP', 'savings-plan',   0.15, 0.05),
+        ('ACC006', 'Commercial', 'Mid-Market', 'EUR', 'pay-as-you-go',  0.00, 0.02),
+        ('ACC007', 'Strategic',  'Enterprise', 'USD', 'savings-plan',   0.15, 0.05),
+        ('ACC008', 'Commercial', 'Mid-Market', 'USD', 'pay-as-you-go',  0.00, 0.02),
+        ('ACC009', 'Commercial', 'SMB',        'EUR', 'pay-as-you-go',  0.00, 0.00),
+        ('ACC010', 'Strategic',  'Enterprise', 'USD', 'savings-plan',   0.15, 0.05)
+    ) AS t (
+        account_id,
+        segment,
+        account_size,
+        currency_code,
+        billing_type,
+        savings_plan_rate,
+        discount_rate
+    )
+),
+
+-- =============================================================================
+-- Union proprietary and open source inference usage
+-- =============================================================================
+all_inference AS (
+    SELECT
+        account_id,
+        model_variant,
+        inference_scope,
+        source_region,
+        input_token,
+        output_token,
+        cache_read_token,
+        cache_write_token,
+        DATE(event_timestamp)   AS revenue_date
+    FROM raw_bronze.inference_user_token_usage_proprietary
+    WHERE DATE(event_timestamp) BETWEEN '2026-01-13' AND '2026-01-19'
+
+    UNION ALL
+
+    SELECT
+        account_id,
+        model_variant,
+        inference_scope,
+        source_region,
+        input_token,
+        output_token,
+        cache_read_token,
+        cache_write_token,
+        DATE(event_timestamp)   AS revenue_date
+    FROM raw_bronze.inference_user_token_usage_open_source
+    WHERE DATE(event_timestamp) BETWEEN '2026-01-13' AND '2026-01-19'
+),
+
+-- =============================================================================
+-- Aggregate to daily grain per account + model + region
+-- =============================================================================
+daily_usage AS (
+    SELECT
+        account_id,
+        model_variant,
+        inference_scope,
+        source_region,
+        revenue_date,
+        SUM(input_token)        AS total_input_tokens,
+        SUM(output_token)       AS total_output_tokens,
+        SUM(cache_read_token)   AS total_cache_read_tokens,
+        SUM(cache_write_token)  AS total_cache_write_tokens
+    FROM all_inference
+    GROUP BY
+        account_id,
+        model_variant,
+        inference_scope,
+        source_region,
+        revenue_date
+),
+
+-- =============================================================================
+-- Calculate gross revenue by token type
+-- =============================================================================
+daily_revenue AS (
+    SELECT
+        u.account_id,
+        u.model_variant,
+        u.inference_scope,
+        u.source_region,
+        u.revenue_date,
+
+        -- Gross revenue per token type (tokens / 1,000,000 * price per 1M)
+        ROUND((u.total_input_tokens       / 1000000.0) * p.price_input_per_1m,      6) AS gross_rev_input_tokens,
+        ROUND((u.total_output_tokens      / 1000000.0) * p.price_output_per_1m,     6) AS gross_rev_output_tokens,
+        ROUND((u.total_cache_read_tokens  / 1000000.0) * p.price_cache_read_per_1m, 6) AS gross_rev_cache_read_tokens,
+        ROUND((u.total_cache_write_tokens / 1000000.0) * p.price_cache_write_per_1m,6) AS gross_rev_cache_write_tokens
+
+    FROM daily_usage u
+    LEFT JOIN model_pricing p
+        ON u.model_variant = p.model_variant
+),
+
+-- =============================================================================
+-- Apply savings plan and discount
+-- =============================================================================
+final_revenue AS (
+    SELECT
+        r.account_id,
+        r.model_variant,
+        r.inference_scope,
+        r.source_region,
+        r.revenue_date,
+        r.gross_rev_input_tokens,
+        r.gross_rev_output_tokens,
+        r.gross_rev_cache_read_tokens,
+        r.gross_rev_cache_write_tokens,
+
+        -- Total gross for applying rates
+        (r.gross_rev_input_tokens
+         + r.gross_rev_output_tokens
+         + r.gross_rev_cache_read_tokens
+         + r.gross_rev_cache_write_tokens)         AS total_gross,
+
+        a.savings_plan_rate,
+        a.discount_rate,
+        a.currency_code,
+        a.billing_type
+
+    FROM daily_revenue r
+    LEFT JOIN account_attrs a
+        ON r.account_id = a.account_id
+)
+
+-- =============================================================================
+-- Final SELECT into the table
+-- =============================================================================
+SELECT
+    account_id,
+    'bedrock_core'                                              AS product_sku,
+    model_variant,
+    inference_scope,
+    source_region                                               AS region,
+    gross_rev_input_tokens,
+    gross_rev_output_tokens,
+    gross_rev_cache_read_tokens,
+    gross_rev_cache_write_tokens,
+
+    -- savings_plan: applied to Strategic/Enterprise accounts only
+    ROUND(total_gross * savings_plan_rate, 6)                   AS savings_plan,
+
+    -- discount_amount: segment-based
+    ROUND(
+        (total_gross - (total_gross * savings_plan_rate))
+        * discount_rate, 6
+    )                                                           AS discount_amount,
+
+    currency_code,
+    billing_type,
+    revenue_date,
+    revenue_date                                                AS snapshot_date,
+    'derived:inference_user_token_usage_proprietary+open_source' AS source_file
+
+FROM final_revenue
+ORDER BY account_id, model_variant, source_region, revenue_date;
+
+
+-- =============================================================================
+-- VERIFICATION
+-- =============================================================================
+
+-- Row count and date range
+SELECT
+    COUNT(*)                        AS total_rows,
+    COUNT(DISTINCT account_id)      AS distinct_accounts,
+    COUNT(DISTINCT model_variant)   AS distinct_models,
+    MIN(revenue_date)               AS earliest_date,
+    MAX(revenue_date)               AS latest_date
+FROM raw_bronze.revenue_account_daily;
+
+-- Revenue summary by account
+SELECT
+    account_id,
+    billing_type,
+    currency_code,
+    SUM(gross_rev_input_tokens
+      + gross_rev_output_tokens
+      + gross_rev_cache_read_tokens
+      + gross_rev_cache_write_tokens)    AS total_gross_revenue,
+    SUM(savings_plan)                    AS total_savings_plan,
+    SUM(discount_amount)                 AS total_discount,
+    SUM(gross_rev_input_tokens
+      + gross_rev_output_tokens
+      + gross_rev_cache_read_tokens
+      + gross_rev_cache_write_tokens
+      - savings_plan
+      - discount_amount)                 AS total_net_revenue
+FROM raw_bronze.revenue_account_daily
+GROUP BY account_id, billing_type, currency_code
+ORDER BY account_id;
+
+-- Revenue by model
+SELECT
+    model_variant,
+    SUM(gross_rev_input_tokens
+      + gross_rev_output_tokens
+      + gross_rev_cache_read_tokens
+      + gross_rev_cache_write_tokens)    AS total_gross_revenue
+FROM raw_bronze.revenue_account_daily
+GROUP BY model_variant
+ORDER BY total_gross_revenue DESC;
+
+
+-- ============================================================
+-- PART 4: Customer Rate Limit Requests Seed Data
+-- Source: 006_seed_quota_customer_rate_limit_requests.sql
+-- Tables: quota_customer_rate_limit_requests
+-- ============================================================
+
+-- =============================================================================
+-- Seed Data: quota_customer_rate_limit_requests
+-- =============================================================================
+-- Date range: 2026-01-13 to 2026-02-26
+-- Customers: ACC001 - ACC010
+-- Models: consistent with config_model_dimensions
+-- Regions: consistent with config_model_region_availability
+-- =============================================================================
+
+INSERT INTO raw_bronze.quota_customer_rate_limit_requests (
+    account_id,
+    limit_type,
+    inference_scope,
+    model_variant,
+    source_region,
+    requests_per_minute,
+    tokens_per_minute,
+    tokens_per_day,
+    status,
+    created_by,
+    create_datetime,
+    last_updated,
+    source_file
+) VALUES
+
+-- =============================================================================
+-- ACC001 - Acme AI Corp (Enterprise/Strategic) - Heavy user, multiple requests
+-- =============================================================================
+('ACC001', 'upgrade', 'global',    'claude-3.5-sonnet_200k_20241022', 'us-east-1',      500,  1000000, 20000000, 'approved',  'alice@acme.com',        '2026-01-13 09:00:00', '2026-01-14 10:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC001', 'upgrade', 'regional',  'gpt-4o_128k_20240513',            'us-east-1',      300,  600000,  12000000, 'approved',  'alice@acme.com',        '2026-01-20 10:00:00', '2026-01-21 11:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC001', 'upgrade', 'global',    'claude-sonnet-4_200k_20250514',   'us-east-1',      1000, 2000000, 40000000, 'approved',  'alice@acme.com',        '2026-02-01 09:00:00', '2026-02-02 10:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC001', 'upgrade', 'regional',  'claude-3.5-sonnet_200k_20241022', 'us-west-2',      200,  400000,  8000000,  'pending',   'alice@acme.com',        '2026-02-20 09:00:00', '2026-02-20 09:00:00', 'rate_limit_requests_feb2026.csv'),
+
+-- =============================================================================
+-- ACC002 - DataStream Inc (Enterprise/Strategic) - SaaS, high volume
+-- =============================================================================
+('ACC002', 'upgrade', 'global',    'claude-3.5-sonnet_200k_20241022', 'us-east-1',      800,  1600000, 32000000, 'approved',  'bob@datastream.com',   '2026-01-14 11:00:00', '2026-01-15 12:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC002', 'upgrade', 'regional',  'llama-3.1_70b_20240723',          'us-east-1',      400,  800000,  16000000, 'approved',  'bob@datastream.com',   '2026-01-25 10:00:00', '2026-01-26 11:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC002', 'upgrade', 'global',    'gpt-4o_128k_20240513',            'us-east-1',      600,  1200000, 24000000, 'rejected',  'bob@datastream.com',   '2026-02-05 09:00:00', '2026-02-06 10:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC002', 'upgrade', 'global',    'claude-sonnet-4_200k_20250514',   'us-east-1',      500,  1000000, 20000000, 'pending',   'bob@datastream.com',   '2026-02-22 10:00:00', '2026-02-22 10:00:00', 'rate_limit_requests_feb2026.csv'),
+
+-- =============================================================================
+-- ACC003 - HealthAI Solutions (Mid-Market/Commercial) - HealthTech, moderate usage
+-- =============================================================================
+('ACC003', 'upgrade', 'regional',  'claude-3-haiku_200k_20240307',    'us-east-1',      200,  400000,  8000000,  'approved',  'carol@healthai.com',   '2026-01-15 14:00:00', '2026-01-16 09:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC003', 'upgrade', 'regional',  'claude-3.5-sonnet_200k_20241022', 'us-east-1',      150,  300000,  6000000,  'approved',  'carol@healthai.com',   '2026-02-03 10:00:00', '2026-02-04 11:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC003', 'downgrade','regional', 'gpt-4o_128k_20240513',            'us-east-1',      50,   100000,  2000000,  'approved',  'carol@healthai.com',   '2026-02-15 09:00:00', '2026-02-16 10:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC003', 'upgrade', 'regional',  'claude-sonnet-4_200k_20250514',   'us-east-1',      100,  200000,  4000000,  'pending',   'carol@healthai.com',   '2026-02-24 11:00:00', '2026-02-24 11:00:00', 'rate_limit_requests_feb2026.csv'),
+
+-- =============================================================================
+-- ACC004 - Nexus Analytics (SMB/Commercial) - Small, cautious upgrades
+-- =============================================================================
+('ACC004', 'upgrade', 'regional',  'claude-3-haiku_200k_20240307',    'us-east-1',      100,  200000,  4000000,  'approved',  'david@nexus.com',      '2026-01-16 10:00:00', '2026-01-17 11:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC004', 'upgrade', 'regional',  'llama-3.1_70b_20240723',          'us-east-1',      50,   100000,  2000000,  'rejected',  'david@nexus.com',      '2026-02-08 09:00:00', '2026-02-09 10:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC004', 'upgrade', 'regional',  'claude-3-haiku_200k_20240307',    'us-east-1',      150,  300000,  6000000,  'pending',   'david@nexus.com',      '2026-02-25 14:00:00', '2026-02-25 14:00:00', 'rate_limit_requests_feb2026.csv'),
+
+-- =============================================================================
+-- ACC005 - GlobalBank Ltd (Enterprise/Strategic) - FinTech, high compliance needs
+-- =============================================================================
+('ACC005', 'upgrade', 'regional',  'claude-3.5-sonnet_200k_20241022', 'eu-west-1',      600,  1200000, 24000000, 'approved',  'emma@globalbank.com',  '2026-01-13 13:00:00', '2026-01-14 14:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC005', 'upgrade', 'regional',  'gpt-4o_128k_20240513',            'eu-west-1',      400,  800000,  16000000, 'approved',  'emma@globalbank.com',  '2026-01-22 10:00:00', '2026-01-23 11:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC005', 'upgrade', 'global',    'claude-sonnet-4_200k_20250514',   'eu-west-1',      800,  1600000, 32000000, 'approved',  'emma@globalbank.com',  '2026-02-02 09:00:00', '2026-02-03 10:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC005', 'upgrade', 'regional',  'claude-3.5-sonnet_200k_20241022', 'eu-central-1',   300,  600000,  12000000, 'pending',   'emma@globalbank.com',  '2026-02-21 10:00:00', '2026-02-21 10:00:00', 'rate_limit_requests_feb2026.csv'),
+
+-- =============================================================================
+-- ACC006 - TechVision GmbH (Mid-Market/Commercial) - Europe based
+-- =============================================================================
+('ACC006', 'upgrade', 'regional',  'gpt-4o_128k_20240513',            'eu-west-1',      250,  500000,  10000000, 'approved',  'franz@techvision.de',  '2026-01-17 10:00:00', '2026-01-18 11:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC006', 'upgrade', 'regional',  'claude-3.5-sonnet_200k_20241022', 'eu-west-1',      200,  400000,  8000000,  'approved',  'franz@techvision.de',  '2026-02-06 09:00:00', '2026-02-07 10:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC006', 'upgrade', 'regional',  'claude-sonnet-4_200k_20250514',   'eu-central-1',   150,  300000,  6000000,  'cancelled', 'franz@techvision.de',  '2026-02-14 10:00:00', '2026-02-15 09:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC006', 'upgrade', 'regional',  'llama-3.1_70b_20240723',          'eu-west-1',      100,  200000,  4000000,  'pending',   'franz@techvision.de',  '2026-02-23 14:00:00', '2026-02-23 14:00:00', 'rate_limit_requests_feb2026.csv'),
+
+-- =============================================================================
+-- ACC007 - AsiaPay Systems (Enterprise/Strategic) - APAC FinTech
+-- =============================================================================
+('ACC007', 'upgrade', 'regional',  'claude-3.5-sonnet_200k_20241022', 'ap-northeast-1', 500,  1000000, 20000000, 'approved',  'grace@asiapay.com',    '2026-01-14 06:00:00', '2026-01-15 07:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC007', 'upgrade', 'regional',  'claude-3-haiku_200k_20240307',    'ap-northeast-1', 300,  600000,  12000000, 'approved',  'grace@asiapay.com',    '2026-01-24 06:00:00', '2026-01-25 07:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC007', 'upgrade', 'global',    'claude-sonnet-4_200k_20250514',   'ap-northeast-1', 700,  1400000, 28000000, 'approved',  'grace@asiapay.com',    '2026-02-04 06:00:00', '2026-02-05 07:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC007', 'upgrade', 'regional',  'gpt-4o_128k_20240513',            'ap-southeast-1', 200,  400000,  8000000,  'pending',   'grace@asiapay.com',    '2026-02-22 06:00:00', '2026-02-22 06:00:00', 'rate_limit_requests_feb2026.csv'),
+
+-- =============================================================================
+-- ACC008 - MediCore AI (Mid-Market/Commercial) - HealthTech Canada
+-- =============================================================================
+('ACC008', 'upgrade', 'regional',  'claude-3-haiku_200k_20240307',    'ca-central-1',   150,  300000,  6000000,  'approved',  'henry@medicore.com',   '2026-01-18 15:00:00', '2026-01-19 10:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC008', 'upgrade', 'regional',  'claude-3.5-sonnet_200k_20241022', 'ca-central-1',   100,  200000,  4000000,  'approved',  'henry@medicore.com',   '2026-02-07 10:00:00', '2026-02-08 11:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC008', 'downgrade','regional', 'gpt-4o_128k_20240513',            'ca-central-1',   25,   50000,   1000000,  'approved',  'henry@medicore.com',   '2026-02-16 10:00:00', '2026-02-17 11:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC008', 'upgrade', 'regional',  'claude-sonnet-4_200k_20250514',   'ca-central-1',   75,   150000,  3000000,  'pending',   'henry@medicore.com',   '2026-02-25 10:00:00', '2026-02-25 10:00:00', 'rate_limit_requests_feb2026.csv'),
+
+-- =============================================================================
+-- ACC009 - RetailBoost Ltd (SMB/Commercial) - Inactive, few requests
+-- =============================================================================
+('ACC009', 'upgrade', 'regional',  'claude-3-haiku_200k_20240307',    'eu-west-1',      50,   100000,  2000000,  'rejected',  'isabel@retail.com',    '2026-01-19 11:00:00', '2026-01-20 10:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC009', 'upgrade', 'regional',  'llama-3.1_70b_20240723',          'eu-west-1',      30,   60000,   1200000,  'cancelled', 'isabel@retail.com',    '2026-02-10 10:00:00', '2026-02-11 09:00:00', 'rate_limit_requests_feb2026.csv'),
+
+-- =============================================================================
+-- ACC010 - CloudNative Co (Enterprise/Strategic) - SaaS Seattle
+-- =============================================================================
+('ACC010', 'upgrade', 'global',    'claude-3.5-sonnet_200k_20241022', 'us-west-2',      700,  1400000, 28000000, 'approved',  'james@cloudnative.com','2026-01-13 16:00:00', '2026-01-14 17:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC010', 'upgrade', 'regional',  'gpt-4o_128k_20240513',            'us-west-2',      400,  800000,  16000000, 'approved',  'james@cloudnative.com','2026-01-21 10:00:00', '2026-01-22 11:00:00', 'rate_limit_requests_jan2026.csv'),
+('ACC010', 'upgrade', 'global',    'claude-sonnet-4_200k_20250514',   'us-west-2',      900,  1800000, 36000000, 'approved',  'james@cloudnative.com','2026-02-01 10:00:00', '2026-02-02 11:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC010', 'upgrade', 'regional',  'llama-3.1_70b_20240723',          'us-west-2',      300,  600000,  12000000, 'pending',   'james@cloudnative.com','2026-02-24 10:00:00', '2026-02-24 10:00:00', 'rate_limit_requests_feb2026.csv'),
+('ACC010', 'downgrade','global',   'claude-3.5-sonnet_200k_20241022', 'us-west-2',      200,  400000,  8000000,  'cancelled', 'james@cloudnative.com','2026-02-18 09:00:00', '2026-02-19 10:00:00', 'rate_limit_requests_feb2026.csv');

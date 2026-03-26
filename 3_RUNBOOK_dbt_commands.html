@@ -117,7 +117,6 @@
     <div class="toc-section">
       <div class="toc-section-label">Run the pipeline</div>
       <a href="#step1" class="toc-link"><span class="sn">1</span>Pull latest from repo</a>
-      <a href="#step2" class="toc-link"><span class="sn">2</span>Set up dbt shortcut</a>
       <a href="#step3" class="toc-link"><span class="sn">3</span>Run dbt seed</a>
       <a href="#step4" class="toc-link"><span class="sn">4</span>Run staging models</a>
       <a href="#step5" class="toc-link"><span class="sn">5</span>Run intermediate models</a>
@@ -264,25 +263,29 @@ cp target/manifest.json prod-state/manifest.json</code></pre><button class="copy
     Running this locally before opening your PR means CI almost always passes on the first try.
   </div>
 
-  <h3>Row limiting in your personal schema</h3>
+  <h3>What data does each environment read from?</h3>
 
-  <div class="callout info"><strong>Why limit rows in personal and dev?</strong>
-    The bronze tables contain the full dataset. Building all models against the full dataset in your personal schema every time you make a change is slow and wastes compute. Row limiting in non-prod environments keeps builds fast while still letting you test your logic.<br><br>
-    This project uses <code>target.name</code> in some models to apply a date filter in non-prod environments. You will see this pattern in the staging models:
+  <div class="callout info"><strong>All environments read from the same raw_bronze source data.</strong>
+    There is no row limiting or date filtering in this project. Every environment — personal, ci, dev, and prod — reads from the full <code>raw_bronze</code> dataset.<br><br>
+    The only difference between environments is <strong>where dbt writes the output models</strong>:<br><br>
+    <code>personal</code> → writes to <code>dbt_yourname_staging_silver</code>, <code>dbt_yourname_mart_gold</code><br>
+    <code>ci</code> → writes to <code>ci_staging_silver</code>, <code>ci_mart_gold</code><br>
+    <code>dev</code> → writes to <code>dev_staging_silver</code>, <code>dev_mart_gold</code><br>
+    <code>prod</code> → writes to <code>prod_staging_silver</code>, <code>prod_mart_gold</code><br><br>
+    The source data in <code>raw_bronze</code> is identical in every case.
   </div>
-
-  <div class="code-wrap"><pre class="sql"><code>-- Example row limit pattern used in this project
-select * from {{ source('raw_bronze', 'inference_user_token_usage_open_source') }}
-{% if target.name != 'prod' %}
-  where usage_date >= current_date - interval '30 days'
-{% endif %}</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="callout info">In your personal schema (<code>target: personal</code>) and dev (<code>target: dev</code>), this filter applies automatically — only the last 30 days of data is processed. In production (<code>target: prod</code>), dbt processes the full dataset. You get fast builds in development without any manual changes needed.</div>
 </section>
 
 <!-- STEP 1 -->
 <section id="step1">
   <div class="step-header"><div class="sc">1</div><h2>Pull latest from repo</h2></div>
+
+  <div class="callout info"><strong>Before running any dbt command — confirm the shell function is active.</strong>
+    The dbt shell function was set up in Runbook 2 Step 4a. If you are in a new Terminal window since then, load it:
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>source ~/.zshrc
+type dbt</code></pre></div>
+    You should see <code>dbt is a shell function</code>. If not, go back to Runbook 2 Step 4a.
+  </div>
 
   <p>All models, tests, macros, and snapshots are already committed to the repo. Pull the latest before running anything:</p>
   <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
@@ -304,39 +307,35 @@ find dbt/snapshots -name "*.sql" | sort</code></pre><button class="copy-btn" onc
   <div class="checkpoint">All 5 containers show <code>Up</code>.</div>
 </section>
 
-<!-- STEP 2 -->
-<section id="step2">
-  <div class="step-header"><div class="sc">2</div><h2>Set up the dbt shortcut</h2></div>
-
-  <div class="callout info"><strong>Why do we need this?</strong>dbt is installed inside the Airflow container — not directly on your Mac. Every dbt command goes through Docker. The shell function below wraps this so you can just type <code>dbt run</code>, <code>dbt seed</code> etc. directly in any Terminal window.</div>
-
-  <p>Open your shell config file:</p>
-  <div class="code-wrap"><pre><code>code ~/.zshrc</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <p>Add these lines at the bottom, then save with <strong>⌘ + S</strong>:</p>
-  <div class="code-wrap"><pre><code># dbt shortcut — runs dbt inside the Airflow container
-dbt() {
-  docker compose -f ~/Documents/btg-case-studies/resource-utilization/docker-compose.yml \
-    run --rm airflow-scheduler bash -c \
-    "cd /opt/airflow/dbt && /usr/local/airflow/dbt_venv/bin/dbt $*"
-}</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <p>Load it into your current Terminal session:</p>
-  <div class="code-wrap"><pre><code>source ~/.zshrc</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="callout info"><strong>Do I need to run source every time?</strong>No — only once right now. Every new Terminal window you open from this point loads it automatically. macOS reads <code>~/.zshrc</code> at the start of every new shell session.</div>
-
-  <p>Test it works:</p>
-  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
-dbt debug</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-  <div class="checkpoint">The last line says <code>All checks passed!</code></div>
-</section>
+<!-- STEP 2 removed — dbt shell function is set up in Runbook 2 Step 4a -->
 
 <!-- STEP 3 -->
 <section id="step3">
   <div class="step-header"><div class="sc">3</div><h2>Run dbt seed</h2></div>
 
   <div class="callout info"><strong>What does dbt seed do?</strong>Reads <code>dbt/seeds/region_mapping.csv</code> and loads it into a table called <code>region_mapping</code> in the <code>seeds</code> schema. This 29-row lookup table maps AWS region codes like <code>us-east-1</code> to territories, airport codes, and GovCloud flags. Several models join against it to enrich region data.</div>
+
+  <div class="callout info"><strong>Understanding seeds.yml — the seed configuration file</strong><br><br>
+    Open <code>dbt/seeds/seeds.yml</code> to see how the seed is configured. Here is what each section does:<br><br>
+
+    <strong>version: 2</strong><br>
+    Required header — tells dbt this file uses the current configuration format.<br><br>
+
+    <strong>seeds: - name: region_mapping</strong><br>
+    Registers this seed with dbt. The name must exactly match the CSV filename without the extension.<br><br>
+
+    <strong>description</strong><br>
+    Human-readable documentation that appears in <code>dbt docs generate</code>. Explains what the seed is and how it gets updated.<br><br>
+
+    <strong>config: schema: seeds</strong><br>
+    Tells dbt to write this table into the <code>seeds</code> schema rather than the default target schema. Combined with the target prefix this becomes <code>dbt_yourname_seeds</code> in your personal environment.<br><br>
+
+    <strong>config: column_types</strong><br>
+    Forces specific PostgreSQL data types for columns that might otherwise be inferred incorrectly. Without this, dbt might load <code>govcloud</code> as <code>varchar</code> instead of <code>boolean</code>, which would break downstream models that treat it as a boolean.<br><br>
+
+    <strong>columns: tests</strong><br>
+    Defines data quality tests on the seed data itself. <code>unique</code> on <code>source_region</code> ensures no duplicate region codes. <code>not_null</code> on every column ensures no blanks exist in the reference data. These tests run as part of <code>dbt test</code> just like model tests.
+  </div>
 
   <div class="code-wrap"><pre><code>dbt seed</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
@@ -379,6 +378,34 @@ Completed successfully.</code></pre></div>
     </tbody>
   </table>
 
+  <div class="callout info"><strong>Understanding a staging model — stg_token_usage_open_source.sql</strong><br><br>
+    Open <code>dbt/models/staging/stg_token_usage_open_source.sql</code> to see a representative example. Every staging model follows the same three-CTE pattern:<br><br>
+
+    <strong>1. config block</strong><br>
+    <code>{{ config(materialized='view') }}</code><br>
+    Tells dbt to create this as a PostgreSQL <code>VIEW</code> rather than a table. Views do not store data — they are saved SQL queries that run on demand. Staging models use views because they are cheap to rebuild and are read by intermediate models which store the actual data.<br><br>
+
+    <strong>2. source CTE</strong><br>
+    <code>select * from {{ source('raw_bronze', 'inference_user_token_usage_open_source') }}</code><br>
+    The <code>{{ source() }}</code> function is how dbt references a bronze table. It tells dbt this model depends on the <code>raw_bronze</code> source, which is defined in <code>sources.yml</code>. dbt uses this to build the dependency graph and run source freshness checks.<br><br>
+
+    <strong>3. filtered CTE</strong><br>
+    Removes rows with null values in critical columns — <code>request_id</code>, <code>account_id</code>, <code>model_variant</code> and others. These nulls would cause silent errors in downstream aggregations. Filtering here means every model downstream can trust these columns are never null.<br><br>
+
+    <strong>4. renamed CTE</strong><br>
+    The main transformation block. Key patterns:<br>
+    — Column renames: <code>input_token as input_tokens</code> — standardises plural naming across the project<br>
+    — Hardcoded value: <code>'open_source' as model_type</code> — tags every row with its model type so the table can be unioned with the proprietary equivalent<br>
+    — <code>coalesce(cache_read_token, 0)</code> — replaces nulls with zero so arithmetic never produces null results<br>
+    — <code>input_token + output_token + coalesce(...) as total_tokens</code> — derives a calculated column from raw columns<br>
+    — <code>date_trunc('minute', event_timestamp) as minute_timestamp</code> — adds time bucketing columns that intermediate models aggregate on<br>
+    — <code>date(event_timestamp) as event_date</code> — extracts just the date for daily aggregations<br><br>
+
+    <strong>5. Final select</strong><br>
+    <code>select * from renamed</code><br>
+    Always selects from the last CTE. The CTE chain makes the logic readable — each step has a clear name and purpose.
+  </div>
+
   <p>Run all staging models:</p>
   <div class="code-wrap"><pre><code>dbt run --select staging</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
@@ -420,6 +447,32 @@ Completed successfully.</code></pre></div>
   </table>
 
   <div class="callout info"><strong>What does incremental mean in practice?</strong>The first time you run these models, dbt builds the full table from all available data. Every subsequent run, dbt checks the max date already in the table and only processes rows newer than that (minus a 7-day overlap for late-arriving data). Much faster than rebuilding everything each time.</div>
+
+  <div class="callout info"><strong>Understanding an incremental model — int_revenue_daily.sql</strong><br><br>
+    Open <code>dbt/models/intermediate/int_revenue_daily.sql</code>. This model shows two important patterns: incremental materialisation and multi-source joining.<br><br>
+
+    <strong>1. config block</strong><br>
+    <code>materialized='incremental'</code> — builds a persistent table, not a view. Only processes new rows on each run.<br>
+    <code>unique_key=['account_id', 'model_variant', 'source_region', 'revenue_date']</code> — the combination of these four columns uniquely identifies a row. dbt uses this to detect which rows already exist.<br>
+    <code>incremental_strategy='delete+insert'</code> — on each run, dbt deletes existing rows that match the incoming data and reinserts them fresh. This handles late-arriving corrections correctly.<br>
+    <code>on_schema_change='append_new_columns'</code> — if you add a new column to the model, dbt adds it to the existing table rather than failing.<br><br>
+
+    <strong>2. is_incremental() block</strong><br>
+    <code>{% if is_incremental() %}</code><br>
+    <code>where revenue_date >= (select max(revenue_date) from {{ this }}) - interval '7 days'</code><br>
+    This block only runs on the second run onwards — not the first full build. <code>{{ this }}</code> refers to the table itself. It reads the most recent date already in the table and only pulls the last 7 days of data — a 7-day window to catch any late-arriving corrections. On the very first run, this block is skipped and the full history is built.<br><br>
+
+    <strong>3. Multiple CTEs as building blocks</strong><br>
+    <code>revenue</code> — reads from the staging revenue model<br>
+    <code>customer</code> — reads customer dimensions from staging<br>
+    <code>model_config</code> — reads model family and publisher from config staging<br>
+    <code>region_mapping</code> — reads territory and govcloud flag from the seed table<br>
+    Each CTE selects only the columns it needs — not <code>select *</code> — which keeps joins clean and explicit.<br><br>
+
+    <strong>4. enriched CTE — the join layer</strong><br>
+    Joins all four CTEs together using <code>LEFT JOIN</code> — meaning revenue rows are kept even if a customer or model has no matching config record. This is safer than an <code>INNER JOIN</code> which would silently drop revenue rows with missing dimensions.<br>
+    <code>net_revenue</code> is derived here: <code>total_gross_revenue - coalesce(savings_plan, 0) - coalesce(discount, 0)</code>. Derived columns are calculated at the intermediate layer so every mart model reads the same consistent value rather than each calculating it differently.
+  </div>
 
   <p>Run the intermediate models:</p>
   <div class="code-wrap"><pre><code>dbt run --select intermediate</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
@@ -490,7 +543,40 @@ Completed successfully.</code></pre></div>
     </tbody>
   </table>
 
-  <p>Run all tests:</p>
+  <div class="callout info"><strong>Understanding a macro — add_prior_period_metrics.sql</strong><br><br>
+    Open <code>dbt/macros/add_prior_period_metrics.sql</code>. A macro is a reusable Jinja function that generates SQL. Instead of writing the same LAG window function pattern in every mart model, you write it once as a macro and call it everywhere.<br><br>
+
+    <strong>Macro signature</strong><br>
+    <code>{% macro add_prior_period_metrics(metrics, partition_cols, date_col, period_type='day') %}</code><br>
+    Takes three required arguments and one optional one: a list of metrics to compare, the columns to partition by, the date column to compare across, and the period type (defaults to 'day'). This single macro generates both the prior period value and the period-over-period change for any list of metrics.<br><br>
+
+    <strong>{% for metric in metrics %}</strong><br>
+    Loops through the list of metrics passed in. For each metric it generates two columns — the prior period value and the change. This means calling the macro with 3 metrics generates 6 SQL columns automatically.<br><br>
+
+    <strong>{{ safe_prior_period(...) }}</strong><br>
+    Calls another macro — macros can call other macros. <code>safe_prior_period</code> generates a LAG window function with null-safe handling. Nesting macros keeps each one focused on one job.<br><br>
+
+    <strong>{{ metric.split('.')[-1] }}</strong><br>
+    Jinja string manipulation — extracts just the column name from a fully qualified reference like <code>r.net_revenue</code>, giving <code>net_revenue</code> for use in the output column name.<br><br>
+
+    <strong>{{ "," if not loop.last else "" }}</strong><br>
+    Adds a comma after every generated column except the last — a common Jinja pattern to avoid trailing comma SQL errors.
+  </div>
+
+  <div class="callout info"><strong>Understanding a custom test — test_revenue_always_positive.sql</strong><br><br>
+    Open <code>dbt/tests/test_revenue_always_positive.sql</code>. A custom test is a SQL file that returns rows when something is wrong. If the query returns zero rows, the test passes. If it returns any rows, the test fails and dbt shows you exactly which rows violated the rule.<br><br>
+
+    <strong>The SQL logic</strong><br>
+    <code>select ... from {{ ref('int_revenue_daily') }} where total_gross_revenue &lt; 0 or net_revenue &lt; 0</code><br>
+    Queries the intermediate revenue model for any rows where revenue is negative. In a healthy pipeline this should always return zero rows — negative revenue would indicate a bug in the upstream data or a calculation error.<br><br>
+
+    <strong>Why test at the intermediate layer?</strong><br>
+    Testing <code>int_revenue_daily</code> instead of the bronze source means the test catches both raw data problems and transformation bugs. If the bronze data has negative values, or if a calculation introduces them, this test catches both.<br><br>
+
+    <strong>The issue column</strong><br>
+    <code>'Negative revenue detected' as issue</code><br>
+    Adding a descriptive column makes failed test output immediately readable in dbt logs — you can see exactly what went wrong without reading the SQL file.
+  </div>
   <div class="code-wrap"><pre><code>dbt test</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <div class="checkpoint">All tests show <code>PASS</code>. The summary line shows <code>Completed successfully</code>.</div>
@@ -533,6 +619,41 @@ Completed successfully.</code></pre></div>
   <div class="callout info"><strong>timestamp vs check strategy — what is the difference?</strong>
     <code>timestamp</code> — uses a column like <code>updated_at</code> to detect changes. Efficient because it only looks at rows where the timestamp changed.<br><br>
     <code>check</code> — compares specific columns directly. Use when the source doesn't have an updated_at column but you still want to track changes to specific fields.
+  </div>
+
+  <div class="callout info"><strong>Understanding a snapshot file — customer_details_snapshot.sql</strong><br><br>
+    Open <code>dbt/snapshots/customer_details_snapshot.sql</code>. Snapshot files use a special <code>{% snapshot %}</code> block instead of a regular SQL file.<br><br>
+
+    <strong>{% snapshot customer_details_snapshot %} ... {% endsnapshot %}</strong><br>
+    The wrapper block that identifies this as a snapshot to dbt. The name inside the tags becomes the table name in the snapshots schema.<br><br>
+
+    <strong>target_schema='snapshots'</strong><br>
+    Writes the snapshot table into the <code>snapshots</code> schema. Combined with the target prefix this becomes <code>dbt_yourname_snapshots</code> in your personal environment.<br><br>
+
+    <strong>unique_key='account_id'</strong><br>
+    The column dbt uses to identify each record. When dbt sees the same <code>account_id</code> appear again with different values, it knows a change has occurred.<br><br>
+
+    <strong>strategy='timestamp'</strong><br>
+    Uses the <code>date_updated</code> column to detect changes. dbt compares the <code>date_updated</code> value in the source against what it last saw. If it changed, the record has been updated.<br><br>
+
+    <strong>updated_at='date_updated'</strong><br>
+    Points to the specific column that carries the last-updated timestamp in the source data.<br><br>
+
+    <strong>invalidate_hard_deletes=True</strong><br>
+    If a customer is deleted from the source, dbt closes their snapshot row by setting <code>dbt_valid_to</code> to the current timestamp. Without this, deleted records would remain open in the snapshot forever as if still active.<br><br>
+
+    <strong>The select statement</strong><br>
+    <code>select ... from {{ ref('stg_customer_details') }}</code><br>
+    Snapshots read from staging models — not directly from bronze. This means the snapshot captures already-cleaned data with standardised column names. Only the columns you select are tracked — <code>customer_segment</code>, <code>customer_vertical</code>, <code>customer_account_size</code>, <code>is_active_customer</code> — any change to these columns creates a new snapshot row.<br><br>
+
+    <strong>What dbt adds automatically</strong><br>
+    dbt adds four columns to every snapshot table:<br>
+    <code>dbt_scd_id</code> — unique ID for each snapshot row<br>
+    <code>dbt_updated_at</code> — when this snapshot row was created<br>
+    <code>dbt_valid_from</code> — when this version of the record became active<br>
+    <code>dbt_valid_to</code> — when this version ended (null = currently active)<br><br>
+    To find a customer's current state: <code>WHERE dbt_valid_to IS NULL</code>.<br>
+    To see what a customer looked like on a specific date: <code>WHERE dbt_valid_from &lt;= '2025-06-01' AND (dbt_valid_to &gt; '2025-06-01' OR dbt_valid_to IS NULL)</code>.
   </div>
 
   <p>Run snapshots for the first time — this creates the initial snapshot of all current records:</p>
@@ -581,6 +702,16 @@ LIMIT 5;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</bu
       <p>The shell function hasn't been loaded yet. Run:</p>
       <div class="code-wrap"><pre><code>source ~/.zshrc</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
       <p>If it still doesn't work, check that the function is in <code>~/.zshrc</code>: <code>cat ~/.zshrc</code></p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">TypeError: __init__() got an unexpected keyword argument 'buffer_size' <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>You are running the dbt version installed directly on your Mac instead of the one inside Docker. The Mac version is old and incompatible. The fix is to make sure the shell function is loaded and taking priority:</p>
+      <div class="code-wrap"><pre><code>source ~/.zshrc
+type dbt</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>You should see <code>dbt is a shell function</code>. If you see <code>dbt is /usr/local/bin/dbt</code> or <code>dbt is /Users/yourname/Library/Python/...</code>, the Mac version is still winning. Check that the function definition is at the <strong>bottom</strong> of <code>~/.zshrc</code> — it must come after any other dbt-related lines.</p>
     </div>
   </div>
 
@@ -651,6 +782,18 @@ LIMIT 5;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</bu
 function copyCode(btn) {
   const code = btn.previousElementSibling.innerText;
   navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = code;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
     btn.textContent = 'copied!';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
