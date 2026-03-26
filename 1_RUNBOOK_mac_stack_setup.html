@@ -159,6 +159,7 @@
     <div class="toc-section">
       <div class="toc-section-label">Ship it</div>
       <a href="#github" class="toc-link"><span class="sn" style="background:#24292e;font-size:9px;">push</span>Pushing future changes</a>
+      <a href="#environments" class="toc-link"><span class="sn" style="background:#7c3aed;font-size:9px;">ENV</span>Your place in the pipeline</a>
       <a href="#troubleshooting" class="toc-link"><span class="sn gray">?</span>Troubleshooting</a>
     </div>
   </div>
@@ -308,7 +309,7 @@
 
   <p>Also set your name and email — Git needs these for every commit:</p>
   <div class="code-wrap"><pre><code>git config --global user.name "Your Name"
-git config --global user.email "you@example.com"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+git config --global user.email "<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="661f091326031e070b160a034805090b">[email&#160;protected]</a>"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <div class="callout warning"><strong>If you skip this step</strong>, your first commit will fail with "Author identity unknown." You will need to run these commands and commit again.</div>
 </section>
@@ -347,12 +348,6 @@ git init</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</but
 # Secrets — never commit these
 .env
 
-# dbt — generated files and credentials
-dbt/profiles.yml
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
-
 # Airflow — runtime logs
 airflow/logs/
 
@@ -366,9 +361,6 @@ EOF</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button><
 
   <div class="callout info"><strong>What does each entry do?</strong>
     <code>.env</code> — your passwords file. Must never go to GitHub.<br>
-    <code>dbt/profiles.yml</code> — contains your database password. Stays local only.<br>
-    <code>dbt/target/</code> — compiled SQL output dbt generates when it runs. Machine-generated, not code you wrote.<br>
-    <code>dbt/dbt_packages/</code> — installed dbt packages, like <code>node_modules</code> in JavaScript.<br>
     <code>airflow/logs/</code> — Airflow writes logs here every time it runs. Changes constantly, different on every machine, not code.<br>
     <code>.DS_Store</code> — hidden Mac file that tracks folder icon positions. Not useful to teammates.
   </div>
@@ -631,6 +623,7 @@ apache-airflow-providers-postgres</code></pre><button class="copy-btn" onclick="
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
+      - ./database:/opt/airflow/database    # config files and SQL scripts
     command: webserver
 
   # ── Airflow Scheduler ─────────────────────────────────────────
@@ -653,6 +646,7 @@ apache-airflow-providers-postgres</code></pre><button class="copy-btn" onclick="
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
+      - ./database:/opt/airflow/database    # config files and SQL scripts
     command: scheduler
 
   # ── Metabase ──────────────────────────────────────────────────
@@ -687,7 +681,7 @@ apache-airflow-providers-postgres</code></pre><button class="copy-btn" onclick="
       postgres:
         condition: service_started
     environment:
-      PGADMIN_DEFAULT_EMAIL: &quot;admin@btg.com&quot;    # quotes required — @ confuses YAML parser
+      PGADMIN_DEFAULT_EMAIL: &quot;<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="8feeebe2e6e1cfeeebe2e6e1a1ece0e2">[email&#160;protected]</a>&quot;    # quotes required — @ confuses YAML parser
       PGADMIN_DEFAULT_PASSWORD: "admin"
     ports:
       - "5050:80"
@@ -789,7 +783,7 @@ postgres                Up   0.0.0.0:5432->5432/tcp</code></pre></div>
     <tbody>
       <tr><td><strong>Airflow</strong></td><td><a href="http://localhost:8080" target="_blank">localhost:8080</a></td><td>username: <code>admin</code> | password: <code>admin</code></td></tr>
       <tr><td><strong>Metabase</strong></td><td><a href="http://localhost:3000" target="_blank">localhost:3000</a></td><td>set up on first visit</td></tr>
-      <tr><td><strong>pgAdmin</strong></td><td><a href="http://localhost:5050" target="_blank">localhost:5050</a></td><td>email: <code>admin@btg.com</code> | password: <code>admin</code></td></tr>
+      <tr><td><strong>pgAdmin</strong></td><td><a href="http://localhost:5050" target="_blank">localhost:5050</a></td><td>email: <code><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="c6a7a2abafa886a7a2abafa8e8a5a9ab">[email&#160;protected]</a></code> | password: <code>admin</code></td></tr>
     </tbody>
   </table>
 
@@ -928,20 +922,108 @@ docker compose restart metabase</code></pre><button class="copy-btn" onclick="co
     <div class="trouble-q" onclick="t(this)">Git says "Author identity unknown" on first commit <span class="arr">▼</span></div>
     <div class="trouble-a">
       <div class="code-wrap"><pre><code>git config --global user.name "Your Name"
-git config --global user.email "you@example.com"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+git config --global user.email "<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="f881978db89d80999588949dd69b9795">[email&#160;protected]</a>"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
       <p>Then retry your commit.</p>
     </div>
   </div>
 </section>
 
+<!-- YOUR PLACE IN THE PIPELINE -->
+<section id="environments">
+  <div class="step-header">
+    <div class="sc" style="background:#7c3aed;font-size:13px;">ENV</div>
+    <h2>Understanding your place in the pipeline</h2>
+  </div>
+
+  <p>Before moving to Runbook 2, take two minutes to understand where this local setup fits in the bigger picture. This will make every decision in the next four runbooks make sense.</p>
+
+  <div class="callout info"><strong>You just built your personal environment.</strong>
+    Everything running on your Mac right now — PostgreSQL, Airflow, Metabase — is your personal sandbox. Nobody else can see it. You can break things, rebuild them, and experiment freely without affecting anyone else.
+  </div>
+
+  <h3>The four environments</h3>
+
+  <p>In a real data engineering team, code travels through four environments before reaching end users. Each one serves a different purpose:</p>
+
+  <table>
+    <thead><tr><th>Environment</th><th>Where it runs</th><th>Who controls it</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Personal</strong> 👈 you are here</td>
+        <td>Your Mac (Docker)</td>
+        <td>You alone</td>
+        <td>Write and test your models. Break things freely. Nobody sees this.</td>
+      </tr>
+      <tr>
+        <td><strong>Dev</strong></td>
+        <td>Shared database schemas</td>
+        <td>The whole team</td>
+        <td>Check that your work plays nicely with your teammates' work. Row-limited data.</td>
+      </tr>
+      <tr>
+        <td><strong>CI (Continuous Integration)</strong></td>
+        <td>Automated — GitHub Actions</td>
+        <td>Nobody — it's automatic</td>
+        <td>Robot runs your tests every time you open a Pull Request. Blocks bad code from reaching production.</td>
+      </tr>
+      <tr>
+        <td><strong>Production</strong></td>
+        <td>Shared database schemas</td>
+        <td>Automated — nobody manually deploys</td>
+        <td>Live, trusted data. Business users and dashboards read from here. Only clean, tested code reaches here.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info"><strong>The golden rule:</strong> Humans push code to branches. Automation pushes to production. You will never type a command that deploys to production — GitHub Actions does that for you automatically when your Pull Request is approved and merged.</div>
+
+  <h3>How this all fits in one PostgreSQL instance</h3>
+
+  <p>Because this is a local tutorial stack, all four environments live inside your single PostgreSQL database as separate schemas. In a real company they would be separate databases or even separate cloud accounts — but the concept is identical.</p>
+
+  <div class="tree">
+<span class="dim">btg_resource_utilization (one PostgreSQL database)</span>
+├── <span class="folder">raw_bronze</span>                 <span class="dim">← shared source — all environments read from here</span>
+│
+├── <span class="folder">dbt_yourname_staging_silver</span>  <span class="dim">← YOUR personal schema (replace yourname with your name)</span>
+├── <span class="folder">dbt_yourname_mart_gold</span>       <span class="dim">← YOUR personal schema</span>
+│
+├── <span class="folder">dev_staging_silver</span>           <span class="dim">← shared dev schema (team integration)</span>
+├── <span class="folder">dev_mart_gold</span>                <span class="dim">← shared dev schema</span>
+│
+├── <span class="folder">prod_staging_silver</span>          <span class="dim">← production schema (Airflow writes here)</span>
+└── <span class="folder">prod_mart_gold</span>               <span class="dim">← production schema (Metabase reads from here)</span>
+  </div>
+
+  <div class="callout warning"><strong>Replace <code>yourname</code> with your actual name throughout these runbooks.</strong>
+    For example if your name is Alice: <code>dbt_alice_staging_silver</code>, <code>dbt_alice_mart_gold</code>.<br>
+    Use lowercase, no spaces. This is how teammates tell each other's schemas apart.
+  </div>
+
+  <h3>What you are building in each runbook</h3>
+
+  <table>
+    <thead><tr><th>Runbook</th><th>What you build</th><th>Environment</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Runbook 1</strong> (this one)</td><td>The Docker stack — PostgreSQL, Airflow, Metabase</td><td>Infrastructure — shared by all environments</td></tr>
+      <tr><td><strong>Runbook 2</strong></td><td>dbt project, all schemas, database connection profiles</td><td>Sets up all four environments at once</td></tr>
+      <tr><td><strong>Runbook 3</strong></td><td>Run dbt models and tests in your personal schema</td><td>Personal</td></tr>
+      <tr><td><strong>Runbook 4</strong></td><td>Automate the pipeline with Airflow and Cosmos</td><td>Production</td></tr>
+      <tr><td><strong>Runbook 5</strong></td><td>Team workflow — branches, Pull Requests, CI/CD</td><td>Dev → CI → Production</td></tr>
+    </tbody>
+  </table>
+
+</section>
+
 <!-- WHAT'S NEXT -->
 <div class="whats-next">
   <h2>What's next? 🎯</h2>
-  <p>Your stack is running. Open <strong>RUNBOOK_dbt.html</strong> to continue — set up the database schemas, load data, and write your first dbt models.</p>
+  <p>Your stack is running. Open <strong>Runbook 2</strong> to continue — set up all four environment schemas, configure dbt connection profiles, load data, and connect dbt to your personal schema.</p>
   <ul>
     <li>Explore the Airflow UI at <a href="http://localhost:8080" target="_blank">localhost:8080</a></li>
     <li>Explore pgAdmin at <a href="http://localhost:5050" target="_blank">localhost:5050</a></li>
     <li>Run <code>git log --oneline</code> to see your full commit history</li>
+    <li>Think about what name you'll use for your personal schema — <code>dbt_alice</code>, <code>dbt_john</code> etc.</li>
   </ul>
 </div>
 
@@ -957,6 +1039,18 @@ function copyCode(btn) {
     btn.textContent = 'copied!';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = code;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = 'copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
   });
 }
-function tog
+functio

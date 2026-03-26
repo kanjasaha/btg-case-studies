@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your First dbt Project — Mac Edition</title>
+<style>
+  :root {
+    --bg:#ffffff;--bg2:#f8f7f4;--bg3:#f0ede8;--text:#1a1a18;--muted:#6b6b65;
+    --border:#e0ddd6;--accent:#2563eb;--accent-light:#eff6ff;
+    --green:#166534;--green-bg:#f0fdf4;--green-border:#bbf7d0;
+    --amber:#92400e;--amber-bg:#fffbeb;--amber-border:#fde68a;
+    --red:#991b1b;--red-bg:#fef2f2;--red-border:#fecaca;
+    --bronze:#92400e;--bronze-bg:#fff7ed;--bronze-border:#fed7aa;
+    --silver:#374151;--silver-bg:#f9fafb;--silver-border:#d1d5db;
+    --gold:#854d0e;--gold-bg:#fefce8;--gold-border:#fef08a;
+    --mono:'SF Mono','Fira Code','Consolas',monospace;--radius:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;line-height:1.75;color:var(--text);background:var(--bg);max-width:820px;margin:0 auto;padding:40px 24px 80px;}
+  .hero{border-bottom:2px solid var(--border);padding-bottom:32px;margin-bottom:40px;}
+  .hero h1{font-size:2rem;font-weight:700;letter-spacing:-.02em;margin-bottom:6px;}
+  .hero .subtitle{color:var(--muted);font-size:1rem;}
+  .badge{display:inline-block;background:var(--accent-light);color:var(--accent);font-size:12px;font-weight:600;padding:2px 10px;border-radius:20px;margin-bottom:12px;letter-spacing:.04em;}
+  .prereq{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:40px;font-size:14.5px;}
+  .prereq strong{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;}
+  #toc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:48px;overflow:hidden;}
+  .toc-header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg3);}
+  .toc-title{font-size:14px;font-weight:600;}
+  .toc-toggle{background:none;border:1px solid var(--border);border-radius:4px;padding:3px 10px;font-size:12px;color:var(--muted);cursor:pointer;}
+  .toc-toggle:hover{background:var(--border);}
+  #toc-body{display:grid;grid-template-columns:repeat(3,1fr);}
+  .toc-section{padding:16px 20px;border-right:1px solid var(--border);}
+  .toc-section:last-child{border-right:none;}
+  .toc-section-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px;}
+  .toc-link{display:flex;align-items:center;gap:7px;color:var(--accent);text-decoration:none;font-size:13.5px;margin-bottom:6px;padding:3px 0;line-height:1.3;}
+  .toc-link:hover{text-decoration:underline;}
+  .sn{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:var(--accent);color:#fff;border-radius:50%;font-size:10px;font-weight:700;flex-shrink:0;}
+  .sn.gray{background:var(--muted);}
+  #toc-body.hidden{display:none;}
+  section{margin-bottom:56px;scroll-margin-top:24px;}
+  .step-header{display:flex;align-items:center;gap:14px;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+  .sc{display:flex;align-items:center;justify-content:center;width:40px;height:40px;background:var(--accent);color:#fff;border-radius:50%;font-size:16px;font-weight:700;flex-shrink:0;}
+  .sc.gray{background:var(--muted);}
+  .step-header h2{font-size:1.35rem;font-weight:700;letter-spacing:-.01em;}
+  h3{font-size:1rem;font-weight:600;margin:24px 0 10px;}
+  p{margin-bottom:14px;}
+  .callout{border-radius:var(--radius);padding:14px 18px;margin:18px 0;font-size:14.5px;border-left:4px solid;line-height:1.65;}
+  .callout strong{display:block;margin-bottom:4px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;}
+  .callout.info{background:var(--accent-light);border-color:var(--accent);color:#1e3a6e;}
+  .callout.success{background:var(--green-bg);border-color:#4ade80;color:var(--green);}
+  .callout.warning{background:var(--amber-bg);border-color:#fbbf24;color:var(--amber);}
+  .callout.error{background:var(--red-bg);border-color:#f87171;color:var(--red);}
+  .code-wrap{position:relative;margin:14px 0;}
+  pre{background:#1e1e1e;color:#d4d4d4;border-radius:var(--radius);padding:16px 20px;overflow-x:auto;font-family:var(--mono);font-size:14px;line-height:1.6;}
+  pre.output{background:#252525;color:#9a9a94;}
+  pre.sql{background:#0d1117;color:#e6edf3;}
+  code{font-family:var(--mono);font-size:13.5px;background:var(--bg3);padding:1px 6px;border-radius:4px;color:#c0392b;}
+  pre code{background:none;color:inherit;padding:0;font-size:inherit;}
+  .copy-btn{position:absolute;top:10px;right:10px;background:#3a3a3a;color:#ccc;border:none;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:var(--mono);transition:background .15s;}
+  .copy-btn:hover{background:#555;}
+  .copy-btn.copied{background:#166534;color:#fff;}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px;}
+  th{background:var(--bg2);text-align:left;padding:10px 14px;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border);}
+  td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:var(--bg2);}
+  .checkpoint{background:var(--green-bg);border:1px solid var(--green-border);border-radius:var(--radius);padding:14px 18px;margin:20px 0;font-size:14.5px;color:var(--green);}
+  .checkpoint::before{content:'✅  You should see: ';font-weight:700;}
+  .tree{background:#1e1e1e;color:#d4d4d4;border-radius:var(--radius);padding:18px 22px;font-family:var(--mono);font-size:13.5px;line-height:1.9;margin:16px 0;}
+  .tree .folder{color:#569cd6;}
+  .tree .file{color:#9cdcfe;}
+  .tree .dim{color:#6a9955;}
+  .layer{display:inline-block;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600;margin:0 2px;}
+  .bronze{background:var(--bronze-bg);color:var(--bronze);border:1px solid var(--bronze-border);}
+  .silver{background:var(--silver-bg);color:var(--silver);border:1px solid var(--silver-border);}
+  .gold{background:var(--gold-bg);color:var(--gold);border:1px solid var(--gold-border);}
+  .seeds-badge{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+  ol{padding-left:22px;margin:12px 0 16px;}
+  ol li{margin-bottom:8px;}
+  ul{padding-left:22px;margin:12px 0 16px;}
+  ul li{margin-bottom:6px;}
+  .trouble-item{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;}
+  .trouble-q{background:var(--bg2);padding:12px 18px;font-weight:600;font-size:14.5px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none;}
+  .trouble-q:hover{background:var(--bg3);}
+  .trouble-q .arr{font-size:12px;color:var(--muted);transition:transform .2s;}
+  .trouble-a{padding:0 18px;max-height:0;overflow:hidden;transition:max-height .3s ease,padding .2s;font-size:14.5px;}
+  .trouble-a.open{max-height:600px;padding:14px 18px;}
+  .trouble-q.active .arr{transform:rotate(180deg);}
+  .whats-next{background:linear-gradient(135deg,#eff6ff 0%,#f0fdf4 100%);border:1px solid var(--border);border-radius:12px;padding:28px 32px;margin-top:40px;}
+  .whats-next h2{font-size:1.2rem;margin-bottom:14px;}
+  footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--border);text-align:center;font-size:13px;color:var(--muted);}
+  @media(max-width:640px){#toc-body{grid-template-columns:1fr 1fr;}.hero h1{font-size:1.5rem;}}
+  @media(max-width:420px){#toc-body{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="badge">RUNBOOK 2 · DBT · MAC</div>
+  <h1>Your First dbt Project 🔧</h1>
+  <p class="subtitle">Set up the database, load real data, and transform it with dbt.</p>
+</div>
+
+<div class="prereq">
+  <strong>Before you start</strong>
+  Complete <strong>RUNBOOK_mac_v2.html</strong> first. Your stack must be running — all containers showing <code>Up</code> in <code>docker compose ps</code>. If not, go back and complete Runbook 1 first.
+</div>
+
+<nav id="toc">
+  <div class="toc-header">
+    <span class="toc-title">📋 Table of Contents</span>
+    <button class="toc-toggle" onclick="toggleToc()" id="toc-btn">Hide</button>
+  </div>
+  <div id="toc-body">
+    <div class="toc-section">
+      <div class="toc-section-label">Understand</div>
+      <a href="#medallion" class="toc-link"><span class="sn gray">→</span>The medallion architecture</a>
+      <a href="#pgadmin" class="toc-link"><span class="sn" style="background:#336791;font-size:8px;">pg</span>Set up pgAdmin</a>
+    </div>
+    <div class="toc-section">
+      <div class="toc-section-label">Build the dbt project</div>
+      <a href="#step1" class="toc-link"><span class="sn">1</span>Create the dbt folder</a>
+      <a href="#step2" class="toc-link"><span class="sn">2</span>Create dbt_project.yml</a>
+      <a href="#step2b" class="toc-link"><span class="sn">2b</span>Create schema name macro</a>
+      <a href="#step3" class="toc-link"><span class="sn">3</span>Create profiles.yml</a>
+      <a href="#step4" class="toc-link"><span class="sn">4</span>Test connection &amp; install packages</a>
+    </div>
+    <div class="toc-section">
+      <div class="toc-section-label">Set up the database</div>
+      <a href="#step5" class="toc-link"><span class="sn">5</span>Create schemas &amp; roles</a>
+      <a href="#step6" class="toc-link"><span class="sn">6</span>Create bronze tables</a>
+      <a href="#step7" class="toc-link"><span class="sn">7</span>Load JSON config via Airflow</a>
+      <a href="#step8" class="toc-link"><span class="sn">8</span>Run data population script</a>
+      <a href="#step9" class="toc-link"><span class="sn">9</span>Verify the data</a>
+    </div>
+    <div class="toc-section">
+      <div class="toc-section-label">Help</div>
+      <a href="#troubleshooting" class="toc-link"><span class="sn gray">?</span>Troubleshooting</a>
+    </div>
+  </div>
+</nav>
+
+<!-- MEDALLION -->
+<section id="medallion">
+  <div class="step-header">
+    <div class="sc gray" style="font-size:18px;">🏅</div>
+    <h2>The medallion architecture</h2>
+  </div>
+
+  <p>Before writing a single line of SQL, understand <em>why</em> we structure data the way we do. This pattern is used at companies like Databricks, Netflix, and Airbnb.</p>
+
+  <div class="callout info"><strong>What is the medallion architecture?</strong>It organizes data into layers — each one more refined than the last. Think of refining gold: raw ore → remove impurities → pure gold ready to use.</div>
+
+  <table>
+    <thead><tr><th>Schema</th><th>Layer</th><th>What lives here</th><th>Who writes tables</th><th>Table grants managed by</th></tr></thead>
+    <tbody>
+      <tr><td><code>raw_bronze</code></td><td><span class="layer bronze">Bronze</span></td><td>Raw data exactly as it arrived — never modified</td><td>Ingestion scripts, Airflow DAGs</td><td>Setup SQL script (static tables)</td></tr>
+      <tr><td><code>seeds</code></td><td><span class="layer seeds-badge">Seeds</span></td><td>Static CSV lookup tables — region codes, product names</td><td>dbt seed only</td><td>dbt post-hook</td></tr>
+      <tr><td><code>staging_silver</code></td><td><span class="layer silver">Silver</span></td><td>Cleaned, standardized data</td><td>dbt models only</td><td>dbt post-hook — <code>analytics_engineer</code>, <code>data_scientist</code>, and selectively <code>partner_dw_engineer</code></td></tr>
+      <tr><td><code>staging_silver_ds</code></td><td><span class="layer silver">Silver DS</span></td><td>Data science model outputs</td><td>Data scientists only</td><td>Data scientist team</td></tr>
+      <tr><td><code>mart_gold</code></td><td><span class="layer gold">Gold</span></td><td>Business-ready aggregations and metrics</td><td>dbt models only</td><td>dbt post-hook</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info"><strong>The most important rule — bronze is append-only.</strong>Bronze data is never updated or deleted. New data is always added as new rows. You always have a full history, and can always rebuild downstream from bronze.</div>
+
+  <div class="callout info"><strong>Why are silver and gold grants managed by dbt post-hooks?</strong>Table-level grants can only be given to tables that exist. When the setup script runs, silver and gold tables don't exist yet — dbt creates them when models run. A post-hook runs a GRANT automatically after each model builds, keeping permissions always in sync.</div>
+
+  <div class="tree">
+<span class="dim">btg_resource_utilization (your PostgreSQL database)</span>
+├── <span class="folder">raw_bronze</span>          <span class="dim">← raw data. never touched after loading.</span>
+│   ├── <span class="file">config_model_dimensions</span>         <span class="dim">← Airflow DAG from JSON</span>
+│   ├── <span class="file">config_model_region_availability</span>  <span class="dim">← Airflow DAG from JSON</span>
+│   ├── <span class="file">customer_details</span>
+│   ├── <span class="file">inference_user_token_usage_open_source</span>
+│   ├── <span class="file">inference_user_token_usage_proprietary</span>
+│   ├── <span class="file">resource_accelerator_inventory</span>
+│   ├── <span class="file">resource_model_utilization</span>
+│   ├── <span class="file">resource_model_instance_allocation</span>
+│   ├── <span class="file">quota_default_rate_limits</span>
+│   └── <span class="file">quota_customer_rate_limit_adjustments</span>
+├── <span class="folder">seeds</span>               <span class="dim">← dbt-managed static lookup tables</span>
+│   └── <span class="file">region_mapping</span>      <span class="dim">← dbt seed from CSV</span>
+├── <span class="folder">staging_silver</span>       <span class="dim">← dbt cleans and shapes data here</span>
+├── <span class="folder">staging_silver_ds</span>    <span class="dim">← data science model outputs</span>
+└── <span class="folder">mart_gold</span>            <span class="dim">← dbt builds business metrics here</span>
+  </div>
+</section>
+
+<!-- PGADMIN -->
+<section id="pgadmin">
+  <div class="step-header">
+    <div class="sc" style="background:#336791;font-size:13px;">pg</div>
+    <h2>Set up pgAdmin</h2>
+  </div>
+
+  <p>Before anything else, confirm your stack is running:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+docker compose ps</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">You see 5 containers all showing <code>Up</code>: <code>btg-airflow-scheduler</code>, <code>btg-airflow-webserver</code>, <code>btg-pgadmin</code>, <code>metabase</code>, <code>postgres</code>. If any show <code>Exit</code> — go back to Runbook 1 troubleshooting before continuing.</div>
+
+  <div class="callout info"><strong>What is pgAdmin?</strong>The official visual interface for PostgreSQL. Browse your schemas, tables, and rows without typing SQL commands. Think of it as Finder for your database. We use it throughout this runbook to verify each step worked.</div>
+
+  <p>Open pgAdmin: <a href="http://localhost:5050" target="_blank">localhost:5050</a> — email: <code><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="aacbcec7c3c4eacbcec7c3c484c9c5c7">[email&#160;protected]</a></code> | password: <code>admin</code></p>
+
+  <h3>Register your PostgreSQL server</h3>
+  <ol>
+    <li>Right-click <strong>Servers</strong> → <strong>Register</strong> → <strong>Server</strong></li>
+    <li><strong>General tab</strong> — Name: <code>btg-local</code></li>
+    <li><strong>Connection tab</strong>:
+      <table style="margin-top:8px;">
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Host name / address</td><td><code>localhost</code></td></tr>
+          <tr><td>Port</td><td><code>5432</code></td></tr>
+          <tr><td>Maintenance database</td><td><code>btg_resource_utilization</code></td></tr>
+          <tr><td>Username</td><td><code>mds_user</code></td></tr>
+          <tr><td>Password</td><td><code>mds_password</code></td></tr>
+        </tbody>
+      </table>
+    </li>
+    <li>Check <strong>Save password</strong> → <strong>Save</strong></li>
+  </ol>
+
+  <div class="callout info"><strong>Why <code>localhost</code> here but <code>postgres</code> in profiles.yml?</strong>
+    pgAdmin runs in your browser on your Mac — it connects to PostgreSQL from outside Docker, through the port mapping in <code>docker-compose.yml</code> (<code>5432:5432</code>). From your Mac, PostgreSQL is reachable at <code>localhost:5432</code>.<br><br>
+    dbt and Airflow run inside Docker containers. Inside Docker, containers find each other by container name — not <code>localhost</code>. So <code>profiles.yml</code> uses <code>host: postgres</code> (the container name), while pgAdmin uses <code>host: localhost</code> (your Mac).
+  </div>
+
+  <div class="checkpoint">You see <strong>btg-local → Databases → btg_resource_utilization</strong>. Only <code>public</code> schema for now — the rest appear after Step 1.</div>
+</section>
+
+<!-- STEP 1 -->
+<!-- STEP 6 -->
+<section id="step1">
+  <div class="step-header"><div class="sc">1</div><h2>Create the dbt folder structure</h2></div>
+
+  <div class="callout info"><strong>What is dbt?</strong>dbt (data build tool) lets you write SQL SELECT statements and automatically turn them into tables or views in your database. You write the logic — dbt handles execution, dependency tracking, testing, and documentation.</div>
+
+  <div class="callout warning"><strong>Run these commands from inside <code>resource-utilization/</code> — not the parent folder.</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>cd ~/Documents/btg-case-studies/resource-utilization && pwd</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+    Confirm you see <code>.../resource-utilization</code>.
+  </div>
+
+  <h3>First — add dbt entries to .gitignore</h3>
+
+  <p>Runbook 1 created your <code>.gitignore</code> for infrastructure files. Now that you are setting up dbt, add the dbt-specific entries. These all belong here in Runbook 2 because the <code>dbt/</code> folder does not exist until this step.</p>
+
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+cat >> .gitignore << 'EOF'
+
+# dbt — credentials (contains your database password)
+dbt/profiles.yml
+
+# dbt — generated files, never commit these
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+EOF</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What does each dbt entry do?</strong>
+    <code>dbt/profiles.yml</code> — contains your database password. Created in Step 3. Must never go to GitHub — share <code>profiles.yml.example</code> with teammates instead.<br>
+    <code>dbt/target/</code> — compiled SQL that dbt generates every time it runs. Machine-generated, not code you wrote. Recreated fresh on every run.<br>
+    <code>dbt/dbt_packages/</code> — installed dbt packages (like <code>node_modules</code> in JavaScript). Downloaded by <code>dbt deps</code> in Step 4. Anyone who clones the repo runs <code>dbt deps</code> once to get them locally.<br>
+    <code>dbt/logs/</code> — dbt writes run logs here. Changes every run, different on every machine, not code.
+  </div>
+
+  <div class="callout info"><strong>Why <code>>></code> and not <code>></code>?</strong>
+    <code>>></code> appends to an existing file. <code>></code> overwrites it entirely. Using <code>>></code> here preserves the infrastructure entries from Runbook 1 and adds the dbt entries below them.
+  </div>
+
+  <p>Verify the full <code>.gitignore</code> now contains both sets of entries:</p>
+  <div class="code-wrap"><pre><code>cat .gitignore</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">You see both the infrastructure entries from Runbook 1 (<code>.env</code>, <code>airflow/logs/</code>) and the new dbt entries (<code>dbt/profiles.yml</code>, <code>dbt/target/</code>, <code>dbt/dbt_packages/</code>, <code>dbt/logs/</code>).</div>
+
+  <p>Commit the updated <code>.gitignore</code>:</p>
+  <div class="code-wrap"><pre><code>git add .gitignore
+git commit -m "add dbt entries to gitignore"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>Now create the dbt folder structure</h3>
+
+  <div class="code-wrap"><pre><code>mkdir -p dbt/models/staging
+mkdir -p dbt/models/intermediate
+mkdir -p dbt/models/marts
+mkdir -p dbt/tests
+mkdir -p dbt/seeds
+mkdir -p dbt/macros
+mkdir -p dbt/snapshots
+mkdir -p dbt/dbt_packages</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Verify:</p>
+  <div class="code-wrap"><pre><code>find dbt -type d</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What does <code>find dbt -type d</code> mean?</strong>
+    <code>find</code> — search for files and folders.<br>
+    <code>dbt</code> — start searching inside the <code>dbt/</code> folder.<br>
+    <code>-type d</code> — only show results that are directories (d = directory). Files are excluded.<br><br>
+    So this command lists every folder inside <code>dbt/</code>, recursively. It is a quick way to confirm the entire folder structure was created correctly before adding any files to it.
+  </div>
+
+  <div class="checkpoint">You see: <code>dbt</code>, <code>dbt/models</code>, <code>dbt/models/staging</code>, <code>dbt/models/intermediate</code>, <code>dbt/models/marts</code>, <code>dbt/tests</code>, <code>dbt/seeds</code>, <code>dbt/macros</code>, <code>dbt/snapshots</code>, <code>dbt/dbt_packages</code>.</div>
+
+  <p>Add a <code>.gitkeep</code> placeholder to every empty folder so Git tracks them:</p>
+  <div class="code-wrap"><pre><code>touch dbt/models/staging/.gitkeep
+touch dbt/models/intermediate/.gitkeep
+touch dbt/models/marts/.gitkeep
+touch dbt/tests/.gitkeep
+touch dbt/seeds/.gitkeep
+touch dbt/macros/.gitkeep
+touch dbt/snapshots/.gitkeep</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Why .gitkeep?</strong>Git does not track empty folders — only files. Without a placeholder, these folders disappear from the repo when someone clones it. <code>.gitkeep</code> is a blank file whose only job is to make the folder visible to Git. Real model files are added in Runbook 3 — until then, the placeholders preserve the full project structure.</div>
+
+  <div class="callout warning"><strong>Do NOT add a .gitkeep to dbt/dbt_packages/.</strong>
+    <code>dbt/dbt_packages/</code> was just added to <code>.gitignore</code> above — so Git will see the folder but never track anything inside it. The folder gets real content when <code>dbt deps</code> runs in Step 4. Creating it manually now prevents a permissions error in some Docker environments where the container cannot create new directories inside a mounted volume.
+  </div>
+
+  <p>Commit:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add .
+git commit -m "add dbt folder structure"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+</section>
+
+<!-- STEP 2 -->
+<!-- STEP 7 -->
+<section id="step2">
+  <div class="step-header"><div class="sc">2</div><h2>Create dbt_project.yml</h2></div>
+
+  <div class="callout info"><strong>What is dbt_project.yml?</strong>The main configuration file. Tells dbt the project name, where to find models, how to configure each layer, and which post-hooks to run after each model builds. Every dbt project must have exactly one of these in the dbt/ root folder.</div>
+
+  <div class="callout warning"><strong>YAML is indentation-sensitive.</strong>Use 2 spaces per level — never tabs. A single wrong space causes a syntax error. VS Code highlights YAML errors with a red underline.</div>
+
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+code dbt/dbt_project.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Type this exactly, then save with <strong>⌘ + S</strong>:</p>
+  <div class="code-wrap"><pre><code># dbt_project.yml
+# Main configuration file. Every dbt project must have exactly one.
+
+# Project name — must match profile: in profiles.yml
+name: 'resource_utilization'
+version: '1.0.0'
+
+# Format version of this config file — always 2 for modern dbt
+config-version: 2
+
+# Which connection profile to use — defined in profiles.yml
+profile: 'resource_utilization'
+
+# Where dbt looks for each type of file
+model-paths: ["models"]   # SQL transformation models
+test-paths:  ["tests"]    # custom data quality tests
+seed-paths:  ["seeds"]    # CSV lookup tables
+macro-paths:     ["macros"]     # reusable SQL functions
+snapshot-paths:  ["snapshots"]  # slowly changing dimension snapshots
+
+# Where dbt writes compiled SQL — gitignored, never commit
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Seed configuration — controls how CSV files in seeds/ are loaded
+seeds:
+  resource_utilization:
+    +schema: seeds            # write to the seeds schema in PostgreSQL
+    +post-hook:               # grant access after loading
+      - "GRANT SELECT ON {{ this }} TO analytics_engineer"
+      - "GRANT SELECT ON {{ this }} TO data_scientist"
+
+# Model configuration — controls how each folder of models behaves
+models:
+  resource_utilization:   # must match project name above
+
+    staging:
+      +schema: staging_silver   # write to staging_silver schema
+      +materialized: view       # VIEW — virtual, always fresh, saves storage
+      +post-hook:               # grant access after each model builds
+        - "GRANT SELECT ON {{ this }} TO analytics_engineer"
+        - "GRANT SELECT ON {{ this }} TO data_scientist"
+
+    intermediate:
+      +schema: staging_silver   # lives in staging_silver alongside staging models
+      +materialized: incremental # INCREMENTAL — only processes new rows each run
+      +post-hook:
+        - "GRANT SELECT ON {{ this }} TO analytics_engineer"
+        - "GRANT SELECT ON {{ this }} TO data_scientist"
+
+    marts:
+      +schema: mart_gold        # write to mart_gold schema
+      +materialized: table      # TABLE — physically stored, faster for Metabase
+      +post-hook:               # grant access after each model builds
+        - "GRANT SELECT ON {{ this }} TO analytics_engineer"
+        - "GRANT SELECT ON {{ this }} TO business_user"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What does <code>{{ this }}</code> mean?</strong>Jinja templating — dbt's way of writing dynamic SQL. <code>{{ this }}</code> refers to the exact table or view just created. So after each model or seed builds, dbt automatically runs a GRANT on that specific table — keeping permissions always in sync.</div>
+
+  <div class="callout info"><strong>How do the +schema values combine with profiles.yml to produce final schema names?</strong>
+    dbt takes your <code>schema</code> from <code>profiles.yml</code> and appends the <code>+schema</code> from <code>dbt_project.yml</code> with an underscore. But in production you want clean schema names with no prefix. Step 2b adds a macro that controls this behaviour per environment.<br><br>
+    Without the macro (dbt default):<br>
+    &nbsp;&nbsp;personal (schema: dbt_alice) + staging_silver → <code>dbt_alice_staging_silver</code><br>
+    &nbsp;&nbsp;prod (schema: prod) + staging_silver → <code>prod_staging_silver</code> ← ugly<br><br>
+    With the macro (Step 2b):<br>
+    &nbsp;&nbsp;personal → <code>dbt_alice_staging_silver</code> ← isolated ✅<br>
+    &nbsp;&nbsp;dev → <code>dev_staging_silver</code> ← isolated ✅<br>
+    &nbsp;&nbsp;ci → <code>ci_staging_silver</code> ← isolated ✅<br>
+    &nbsp;&nbsp;prod → <code>staging_silver</code> ← clean, no prefix ✅
+  </div>
+
+  <div class="callout info"><strong>What are snapshots?</strong>
+    Snapshots track how a record changes over time. Bronze tables are append-only — they never update existing rows. But some source data does change, like a customer's segment or a model going inactive. A dbt snapshot checks for changes and records a new row with a timestamp whenever something changes, giving you a full history.<br><br>
+    This project has two snapshots:<br>
+    <code>customer_details_snapshot</code> — tracks when a customer's segment, size, or status changes over time.<br>
+    <code>model_availability_snapshot</code> — tracks when models go active or inactive in each region.<br><br>
+    Snapshots are run with <code>dbt snapshot</code> — covered in Runbook 3.
+  </div>
+
+  <p>Commit:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add .
+git commit -m "add dbt_project.yml"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+</section>
+
+<!-- STEP 2b -->
+<section id="step2b">
+  <div class="step-header"><div class="sc">2b</div><h2>Create the schema name macro</h2></div>
+
+  <div class="callout info"><strong>What is a macro?</strong>A reusable piece of Jinja code that dbt calls automatically during every run. The <code>generate_schema_name</code> macro is a special built-in hook — dbt calls it every time it needs to figure out which schema to write a model into. By overriding it, you control exactly how schema names are generated for each environment.</div>
+
+  <div class="callout info"><strong>Why do we need this?</strong>
+    Without this macro, dbt always concatenates your target schema with the custom schema:<br>
+    <code>prod</code> + <code>staging_silver</code> → <code>prod_staging_silver</code><br><br>
+    That is fine for dev isolation but ugly in production. This macro tells dbt:<br>
+    — In <strong>personal, dev, ci</strong>: concatenate (so environments never collide)<br>
+    — In <strong>prod</strong>: use only the custom schema (clean names for Metabase and business users)
+  </div>
+
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+code dbt/macros/generate_schema_name.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Type this exactly, then save with <strong>⌘ + S</strong>:</p>
+
+  <div class="code-wrap"><pre><code>-- macros/generate_schema_name.sql
+-- Controls how dbt names schemas in each environment.
+--
+-- How it works:
+--   personal → dbt_alice_staging_silver  (your private isolated schemas)
+--   dev      → dev_staging_silver        (shared team schemas, isolated)
+--   ci       → ci_staging_silver         (automated PR test schemas, isolated)
+--   prod     → staging_silver            (clean names, no prefix)
+--
+-- dbt calls this macro automatically on every run.
+-- You never call it directly.
+
+{% macro generate_schema_name(custom_schema_name, node) -%}
+
+  {%- set default_schema = target.schema -%}
+  {# default_schema comes from profiles.yml:
+     personal → "dbt_alice"
+     dev      → "dev"
+     ci       → "ci"
+     prod     → "prod"                    #}
+
+  {%- if custom_schema_name is none -%}
+    {# No +schema set in dbt_project.yml for this model.
+       Just use the target schema as-is.
+       personal → "dbt_alice"
+       prod     → "prod"                  #}
+    {{ default_schema }}
+
+  {%- elif target.name == 'prod' -%}
+    {# Production: use ONLY the custom schema — drop the prefix entirely.
+       prod + staging_silver → "staging_silver"
+       prod + mart_gold      → "mart_gold"      #}
+    {{ custom_schema_name | trim }}
+
+  {%- elif target.name in ['personal', 'dev', 'ci'] -%}
+    {# Non-prod: prefix with target schema to isolate each environment.
+       personal + staging_silver → "dbt_alice_staging_silver"
+       dev      + staging_silver → "dev_staging_silver"
+       ci       + staging_silver → "ci_staging_silver"
+       personal + mart_gold      → "dbt_alice_mart_gold"
+       dev      + mart_gold      → "dev_mart_gold"
+       ci       + mart_gold      → "ci_mart_gold"            #}
+    {{ default_schema }}_{{ custom_schema_name | trim }}
+
+  {%- else -%}
+    {# Safety fallback for any unknown target name.
+       Concatenates like non-prod to avoid accidentally writing to wrong place. #}
+    {{ default_schema }}_{{ custom_schema_name | trim }}
+
+  {%- endif -%}
+
+{%- endmacro %}</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>Verify it compiles correctly</h3>
+
+  <p>Once dbt is connected (Step 4), run this to confirm the macro resolves schemas correctly for your personal target:</p>
+
+  <div class="code-wrap"><pre><code>dbt compile --select staging --target personal</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Open a compiled file and check the schema it resolved to:</p>
+
+  <div class="code-wrap"><pre><code>head -5 target/compiled/resource_utilization/models/staging/stg_customer_details.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">The compiled SQL references <code>dbt_yourname_staging_silver</code> — your personal schema, not prod.</div>
+
+  <div class="callout info"><strong>What schemas does each environment produce?</strong>
+    <table style="font-size:13.5px;margin:8px 0;">
+      <thead><tr><th>Target</th><th>profiles.yml schema</th><th>Staging models land in</th><th>Mart models land in</th></tr></thead>
+      <tbody>
+        <tr><td><code>personal</code></td><td><code>dbt_yourname</code></td><td><code>dbt_yourname_staging_silver</code></td><td><code>dbt_yourname_mart_gold</code></td></tr>
+        <tr><td><code>dev</code></td><td><code>dev</code></td><td><code>dev_staging_silver</code></td><td><code>dev_mart_gold</code></td></tr>
+        <tr><td><code>ci</code></td><td><code>ci</code></td><td><code>ci_staging_silver</code></td><td><code>ci_mart_gold</code></td></tr>
+        <tr><td><code>prod</code></td><td><code>prod</code></td><td><code>staging_silver</code></td><td><code>mart_gold</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Commit:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add .
+git commit -m "add generate_schema_name macro for environment-aware schema naming"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+</section>
+
+<!-- STEP 3 -->
+<!-- STEP 8 -->
+<section id="step3">
+  <div class="step-header"><div class="sc">3</div><h2>Create profiles.yml</h2></div>
+
+  <div class="callout info"><strong>What is profiles.yml?</strong>Where dbt stores database connection details. Separate from dbt_project.yml by design — project settings belong in the repo, connection details stay on your machine. Each <strong>target</strong> is a named connection pointing to a different environment.</div>
+
+  <div class="callout warning"><strong>profiles.yml contains your password — NEVER commit it to GitHub.</strong>It is blocked by <code>.gitignore</code> from Runbook 1. After creating it, always run <code>git status</code> to confirm it is invisible to Git.</div>
+
+  <div class="callout warning"><strong>profiles.yml lives inside dbt/ — not in ~/.dbt/</strong>Our Docker setup maps <code>dbt/</code> to <code>/opt/airflow/dbt</code> inside the container, so dbt finds the file there automatically.</div>
+
+  <div class="callout info"><strong>What are targets?</strong>
+    Each target is a named connection profile pointing to a different environment. You will create four:<br><br>
+    <code>personal</code> — your own private schemas, named after you. This is where you develop.<br>
+    <code>dev</code> — shared team schemas for integration checking.<br>
+    <code>ci</code> — used by GitHub Actions when running automated tests on Pull Requests.<br>
+    <code>prod</code> — live schemas that Airflow writes to and Metabase reads from.<br><br>
+    Because all four environments run in the same PostgreSQL instance on your Mac, the host and credentials are the same — only the schema names differ.
+  </div>
+
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+code dbt/profiles.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Replace <code>yourname</code> with your actual first name (lowercase, no spaces). Then save with <strong>⌘ + S</strong>:</p>
+  <div class="code-wrap"><pre><code># profiles.yml
+# Tells dbt how to connect to PostgreSQL for each environment.
+# NEVER commit this file — it contains your password.
+# Share profiles.yml.example with teammates instead.
+#
+# REPLACE "yourname" with your actual first name everywhere below.
+# Example: if your name is Alice, use "alice" → dbt_alice
+# The generate_schema_name macro then produces:
+#   staging models → dbt_alice_staging_silver
+#   mart models    → dbt_alice_mart_gold
+
+resource_utilization:
+
+  # Default target when you run dbt locally — always your personal schema
+  target: personal
+
+  outputs:
+
+    # ── PERSONAL ─────────────────────────────────────────────────────
+    # Your private development schemas. Only you write here.
+    # Run: dbt run --target personal (or just: dbt run)
+    personal:
+      type: postgres
+      host: localhost            # your Mac connects via localhost
+      port: 5432
+      user: mds_user
+      password: mds_password
+      dbname: btg_resource_utilization
+      schema: dbt_yourname       # dbt prepends this to model schema names
+      threads: 4
+
+    # ── DEV ──────────────────────────────────────────────────────────
+    # Shared team schemas. Merged feature branches build here.
+    # Run: dbt run --target dev
+    dev:
+      type: postgres
+      host: localhost
+      port: 5432
+      user: mds_user
+      password: mds_password
+      dbname: btg_resource_utilization
+      schema: dev
+      threads: 4
+
+    # ── CI ───────────────────────────────────────────────────────────
+    # Used by GitHub Actions on Pull Requests. Runs automatically.
+    # You never run this manually.
+    ci:
+      type: postgres
+      host: localhost
+      port: 5432
+      user: mds_user
+      password: mds_password
+      dbname: btg_resource_utilization
+      schema: ci
+      threads: 4
+
+    # ── PRODUCTION ───────────────────────────────────────────────────
+    # Airflow writes here on a schedule. Metabase reads from here.
+    # You never run dbt --target prod manually.
+    prod:
+      type: postgres
+      host: postgres             # inside Docker, use container name
+      port: 5432
+      user: mds_user
+      password: mds_password
+      dbname: btg_resource_utilization
+      schema: prod
+      threads: 4</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Why does personal use <code>host: localhost</code> but prod uses <code>host: postgres</code>?</strong>
+    When you run dbt from your Terminal (personal, dev, ci targets), dbt runs on your Mac and connects to PostgreSQL through the Docker port mapping — so it uses <code>localhost</code>.<br><br>
+    When Airflow runs dbt (prod target), dbt runs inside the Docker container. Inside Docker, containers find each other by container name — not localhost. The PostgreSQL container is named <code>postgres</code>.
+  </div>
+
+  <div class="callout info"><strong>How do schemas get named?</strong>
+    dbt combines your <code>schema</code> setting from profiles.yml with the folder-level schema from dbt_project.yml using a custom macro.<br><br>
+    For your personal target (<code>schema: dbt_alice</code>):<br>
+    &nbsp;&nbsp;staging models → <code>dbt_alice_staging_silver</code><br>
+    &nbsp;&nbsp;mart models → <code>dbt_alice_mart_gold</code><br><br>
+    For prod target (<code>schema: prod</code>):<br>
+    &nbsp;&nbsp;staging models → <code>prod_staging_silver</code><br>
+    &nbsp;&nbsp;mart models → <code>prod_mart_gold</code><br><br>
+    This keeps every developer's schemas separate without any conflicts.
+  </div>
+
+  <p>Create the safe template to share with teammates:</p>
+  <div class="code-wrap"><pre><code>code dbt/profiles.yml.example</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Same content — replace the password line:</p>
+  <div class="code-wrap"><pre><code>      password: YOUR_PASSWORD_HERE  # copy from .env</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Verify profiles.yml is NOT visible to Git:</p>
+  <div class="code-wrap"><pre><code>git status</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint"><code>dbt/profiles.yml.example</code> shows as untracked. <code>dbt/profiles.yml</code> does NOT appear anywhere. If it does — do not add it. Check your <code>.gitignore</code> has <code>dbt/profiles.yml</code> on its own line.</div>
+
+  <p>Commit only the example:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add .
+git commit -m "add profiles.yml.example template"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+</section>
+
+<!-- STEP 4 -->
+<!-- STEP 9 - DBT DEBUG AND DEPS -->
+<section id="step4">
+  <div class="step-header"><div class="sc">4</div><h2>Test connection and install packages</h2></div>
+
+  <h3>Step 9a — Test the dbt connection</h3>
+  <p>Confirm dbt can find your config files and reach PostgreSQL:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+dbt debug</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout error"><strong>If you see "No such file or directory: /opt/airflow/dbt"</strong> — the dbt volume mount is missing. Both <code>airflow-webserver</code> and <code>airflow-scheduler</code> need this in their volumes:
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>      - ./dbt:/opt/airflow/dbt</code></pre></div>
+    Add it, save, then <code>docker compose down &amp;&amp; docker compose up -d</code> and retry.
+  </div>
+
+  <div class="callout error"><strong>If you see a syntax error near "config-version"</strong> — open <code>dbt/dbt_project.yml</code> and confirm <code>config-version: 2</code> appears exactly once on its own line.</div>
+
+  <div class="checkpoint">The last line says <code>All checks passed!</code></div>
+
+  <h3>Step 9b — Install dbt packages</h3>
+
+  <p>This project uses two dbt packages listed in <code>dbt/packages.yml</code>. Confirm the file is in the repo:</p>
+  <div class="code-wrap"><pre><code>cat dbt/packages.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="checkpoint">You see <code>dbt_utils</code> and <code>dbt_project_evaluator</code> listed.</div>
+
+  <p>Create the <code>dbt_packages</code> folder inside the dbt project:</p>
+  <div class="code-wrap"><pre><code>mkdir -p dbt/dbt_packages</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="callout info"><strong>Why create it manually?</strong><code>dbt deps</code> creates this folder automatically when it runs — but creating it first makes the project structure visible before any packages are installed. It also prevents a permissions error in some Docker environments where the container cannot create new directories inside a mounted volume.</div>
+
+  <p>Install the packages:</p>
+  <div class="code-wrap"><pre><code>dbt deps</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What is dbt deps?</strong>Reads <code>packages.yml</code> and downloads the listed packages into <code>dbt/dbt_packages/</code>. Exactly like <code>pip install -r requirements.txt</code> in Python.<br><br>
+    <code>dbt_utils</code> — reusable SQL macros: date spine generation, surrogate keys, safe math operations. Several models in this project use these.<br><br>
+    <code>dbt_project_evaluator</code> — audits your dbt project against best practices. Flags models without tests, undocumented sources, or broken lineage.<br><br>
+    <code>dbt/dbt_packages/</code> is in <code>.gitignore</code> — never commit it. Anyone who clones the repo runs <code>dbt deps</code> once to install packages locally.
+  </div>
+
+  <div class="checkpoint">You see <code>Installed 2 package(s)</code> with no errors. The <code>dbt/dbt_packages/dbt_utils</code> folder now exists.</div>
+
+</section>
+
+<!-- STEP 5 -->
+<!-- STEP 1 -->
+<section id="step5">
+  <div class="step-header"><div class="sc">5</div><h2>Create schemas and roles</h2></div>
+
+  <div class="callout info"><strong>What is a schema?</strong>A named container for tables inside a database. Think of the database as a filing cabinet and schemas as the drawers inside it.</div>
+
+  <div class="callout info"><strong>What is a role?</strong>A job title in PostgreSQL. Controls what a user can do. We create them now — as the project grows, you grant roles to new users instead of managing permissions one by one.</div>
+
+  <div class="callout info"><strong>Why are we creating schemas for four environments?</strong>
+    As explained in Runbook 1, this project uses four environments: personal, dev, CI, and production. All four live in the same PostgreSQL database as separate schemas. Creating them all now means the database is ready for the full team workflow you will learn in Runbook 5.<br><br>
+    <strong>Replace <code>yourname</code> with your actual first name (lowercase)</strong> everywhere below — for example <code>dbt_alice</code> if your name is Alice.
+  </div>
+
+  <div class="callout info"><strong>GRANT USAGE vs GRANT ALL:</strong>
+    <table style="font-size:13.5px;margin:8px 0;">
+      <thead><tr><th>Grant</th><th>Enter schema</th><th>Read tables</th><th>Create tables</th></tr></thead>
+      <tbody>
+        <tr><td><code>GRANT USAGE</code></td><td>✅</td><td>❌ needs table grant</td><td>❌</td></tr>
+        <tr><td><code>GRANT CREATE</code></td><td>✅</td><td>❌ needs table grant</td><td>✅</td></tr>
+        <tr><td><code>GRANT ALL</code></td><td>✅</td><td>✅</td><td>✅</td></tr>
+      </tbody>
+    </table>
+    <code>mds_user</code> gets <code>GRANT ALL</code> so dbt can enter schemas and create tables freely.
+  </div>
+
+  <div class="callout warning"><strong>Table-level grants are NOT in this script.</strong>They belong in dbt post-hooks — run after each model builds. The tables don't exist yet when this setup script runs.</div>
+
+  <p>Confirm you are in the right folder and stack is running:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+docker compose ps</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="checkpoint">All containers show <code>Up</code>.</div>
+
+  <p>Create the database folder structure:</p>
+  <div class="code-wrap"><pre><code>mkdir -p database/setup
+mkdir -p database/data_population
+mkdir -p database/config
+touch database/setup/.gitkeep
+touch database/data_population/.gitkeep
+touch database/config/.gitkeep</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Why three subfolders?</strong>
+    <code>setup/</code> — DDL scripts that create schemas, roles, tables. Run once.<br>
+    <code>data_population/</code> — SQL scripts that insert synthetic data. Run once.<br>
+    <code>config/</code> — static JSON files that Airflow loads into bronze. Committed to Git so anyone who clones the repo can run everything.
+  </div>
+
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add .
+git commit -m "add database folder structure"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>The setup script is already in the repo. Open it and read through it before running — every line is explained in the callout below:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+code database/setup/001_setup_database.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>The file contains:</p>
+  <ul>
+    <li>The shared bronze schema: <code>raw_bronze</code>, <code>seeds</code></li>
+    <li>Personal environment schemas (replace <code>yourname</code>): <code>dbt_yourname_staging_silver</code>, <code>dbt_yourname_mart_gold</code></li>
+    <li>Dev environment schemas: <code>dev_staging_silver</code>, <code>dev_mart_gold</code></li>
+    <li>CI environment schemas: <code>ci_staging_silver</code>, <code>ci_mart_gold</code></li>
+    <li>Production schemas: <code>staging_silver</code>, <code>mart_gold</code>, <code>snapshots</code></li>
+    <li>Data science schema: <code>staging_silver_ds</code></li>
+    <li>Roles and grants for each schema</li>
+    <li>A verification query listing all schemas</li>
+  </ul>
+
+  <div class="callout info"><strong>Why do prod schemas have no prefix?</strong>
+    This is the <code>generate_schema_name</code> macro from Step 2b at work. In production, dbt uses only the custom schema name (<code>staging_silver</code>, <code>mart_gold</code>) with no target prefix. In every other environment, the target schema is prepended (<code>dev_staging_silver</code>, <code>ci_mart_gold</code>). This is why you create schemas with these exact names here — they must match what dbt will produce when it runs.
+  </div>
+
+  <div class="callout warning"><strong>Before running — edit the script to set your name.</strong>
+    Open <code>database/setup/001_setup_database.sql</code> in VS Code and find every occurrence of <code>yourname</code>. Replace them all with your actual first name (lowercase).<br><br>
+    Example: replace <code>dbt_yourname_staging_silver</code> with <code>dbt_alice_staging_silver</code>.<br><br>
+    Then save the file and commit it before running.
+  </div>
+
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add .
+git commit -m "set personal schema name to dbt_yourname"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Run it:</p>
+  <div class="code-wrap"><pre><code>docker exec -i postgres psql -U mds_user -d btg_resource_utilization < database/setup/001_setup_database.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What does this command do?</strong>
+    <code>docker exec -i postgres</code> — run a command inside the postgres container. <code>-i</code> keeps stdin open so we can pipe the file in.<br>
+    <code>psql -U mds_user -d btg_resource_utilization</code> — connect as our app user.<br>
+    <code>&lt; database/setup/001_setup_database.sql</code> — pipe the SQL file into psql line by line.
+  </div>
+
+  <div class="checkpoint">The verification query returns all schemas including your personal ones (<code>dbt_yourname_staging_silver</code>, <code>dbt_yourname_mart_gold</code>), dev schemas (<code>dev_staging_silver</code>, <code>dev_mart_gold</code>), CI schemas (<code>ci_staging_silver</code>, <code>ci_mart_gold</code>), and clean prod schemas (<code>staging_silver</code>, <code>mart_gold</code>).</div>
+
+  <p>Refresh pgAdmin — you should now see all schemas under <strong>btg_resource_utilization → Schemas</strong>.</p>
+
+  <div class="callout success"><strong>Your database is now ready for the full team workflow.</strong>
+    Every environment has its own schemas. Your personal schemas are isolated — building models there never touches dev or production. In Runbook 5 you will see exactly how code flows from your personal schemas all the way to production through Pull Requests and automated CI.
+  </div>
+
+<!-- STEP 6 -->
+<!-- STEP 2 -->
+<section id="step6">
+  <div class="step-header"><div class="sc">6</div><h2>Create bronze tables</h2></div>
+
+  <div class="callout info"><strong>What are bronze tables?</strong>The raw landing zone. Data is stored exactly as it arrived. Every row has a <code>loaded_at</code> timestamp. You can always rebuild every downstream table from bronze — it is the single source of truth.</div>
+
+  <p>The bronze tables script is already in the repo. Open it and read through it before running:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+code database/setup/002_create_bronze_tables.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>The file contains:</p>
+  <ul>
+    <li>Ten <code>CREATE TABLE IF NOT EXISTS</code> statements in <code>raw_bronze</code> — one per data source</li>
+    <li><code>CREATE INDEX IF NOT EXISTS</code> for each table — speeds up queries in silver models</li>
+    <li><code>COMMENT ON TABLE</code> for each table — documentation that shows in pgAdmin</li>
+    <li>A verification query at the bottom listing all 10 tables</li>
+  </ul>
+
+  <p>Run the script:</p>
+  <div class="code-wrap"><pre><code>docker exec -i postgres psql -U mds_user -d btg_resource_utilization < database/setup/002_create_bronze_tables.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">The verification query returns 10 table names all in <code>raw_bronze</code>.</div>
+
+  <p>Refresh pgAdmin — expand <strong>raw_bronze → Tables</strong> to see all 10 tables.</p>
+
+</section>
+
+<!-- STEP 7 -->
+<!-- STEP 3 -->
+<section id="step7">
+  <div class="step-header"><div class="sc">7</div><h2>Load JSON config files via Airflow</h2></div>
+
+  <div class="callout info"><strong>What are these JSON files?</strong>Two static configuration files describing the AI models in this system:<br><br>
+    <code>model_configuration.json</code> — 20 records with model specs: publisher, accelerator type, replica count, performance metrics.<br>
+    <code>model_region_availability.json</code> — 41 records showing where each model is deployed.<br><br>
+    These are loaded once into the bronze config tables using a manually triggered Airflow DAG.
+  </div>
+
+  <h3>Step 3a — Get the JSON files into database/config/</h3>
+
+  <div class="callout info"><strong>Two ways to follow this runbook:</strong><br><br>
+    <strong>Option A — Cloned the repo:</strong> The JSON files are already committed and sitting in <code>database/config/</code>. Just confirm they are there and move on.<br><br>
+    <strong>Option B — Building from scratch step by step:</strong> Go to the GitHub repo in your browser, navigate to <code>database/config/</code>, download both JSON files, and save them into your local <code>database/config/</code> folder. Then commit them to your own repo.
+  </div>
+
+  <p>Confirm the files are in place:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+ls database/config/</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">You see <code>model_configuration.json</code> and <code>model_region_availability.json</code> listed.</div>
+
+  <p>If you downloaded them manually, commit them now:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add .
+git commit -m "add model config JSON files"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>Step 3b — Create the Airflow DAG</h3>
+
+  <div class="callout info"><strong>What is a DAG?</strong>A DAG (Directed Acyclic Graph) is a Python file that defines a workflow — what tasks to run and in what order. Our DAG has two tasks: load model_configuration.json, then load model_region_availability.json. It only runs when you manually trigger it.</div>
+
+  <div class="code-wrap"><pre><code>code airflow/dags/load_config_bronze.py</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Type this exactly, then save with <strong>⌘ + S</strong>:</p>
+  <div class="code-wrap"><pre><code>"""
+load_config_bronze.py
+One-time DAG to load static JSON config files into bronze tables.
+Trigger manually from the Airflow UI — never runs on a schedule.
+
+Files:
+  database/config/model_configuration.json
+    → raw_bronze.config_model_dimensions (20 records)
+  database/config/model_region_availability.json
+    → raw_bronze.config_model_region_availability (41 records)
+"""
+
+import json
+import os
+from datetime import datetime
+
+import psycopg2
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+
+DB_CONN = {
+    "host":     "postgres",
+    "port":     5432,
+    "dbname":   "btg_resource_utilization",
+    "user":     "mds_user",
+    "password": "mds_password",
+}
+
+# Mapped from docker-compose volume: ./database → /opt/airflow/database
+CONFIG_DIR = "/opt/airflow/database/config"
+
+
+def load_model_configuration():
+    """Load model_configuration.json → raw_bronze.config_model_dimensions"""
+
+    filepath = os.path.join(CONFIG_DIR, "model_configuration.json")
+    with open(filepath) as f:
+        data = json.load(f)
+
+    models = data["models"]
+    print(f"Loading {len(models)} records...")
+
+    conn = psycopg2.connect(**DB_CONN)
+    cur = conn.cursor()
+    inserted = skipped = 0
+
+    for m in models:
+        cur.execute("""
+            INSERT INTO raw_bronze.config_model_dimensions (
+                publisher_name, model_display_name, model_resource_name,
+                model_family, model_variant, model_version,
+                model_task, inference_scope, is_open_source,
+                replicas, max_concurrency, ideal_concurrency, max_rps,
+                accelerator_type, accelerators_per_replica, memory_gb,
+                endpoint, tokens_per_second, avg_tokens_per_request,
+                avg_latency_seconds, snapshot_date, source_file
+            ) VALUES (
+                %(publisher_name)s, %(model_display_name)s, %(model_resource_name)s,
+                %(model_family)s, %(model_variant)s, %(model_version)s,
+                %(model_task)s, %(inference_scope)s, %(is_open_source)s,
+                %(replicas)s, %(max_concurrency)s, %(ideal_concurrency)s, %(max_rps)s,
+                %(accelerator_type)s, %(accelerators_per_replica)s, %(memory_gb)s,
+                %(endpoint)s, %(tokens_per_second)s, %(avg_tokens_per_request)s,
+                %(avg_latency_seconds)s, %(snapshot_date)s, 'model_configuration.json'
+            )
+            ON CONFLICT (model_variant, snapshot_date) DO NOTHING
+        """, m)
+        if cur.rowcount == 1:
+            inserted += 1
+        else:
+            skipped += 1
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f"Done — inserted: {inserted}, skipped (already exists): {skipped}")
+
+
+def load_model_region_availability():
+    """Load model_region_availability.json → raw_bronze.config_model_region_availability
+
+    Note: routing_strategy and inference_region fields in the JSON are NOT stored
+    in the bronze table — they will be derived in the silver layer.
+    """
+
+    filepath = os.path.join(CONFIG_DIR, "model_region_availability.json")
+    with open(filepath) as f:
+        data = json.load(f)
+
+    records = data["model_region_availability"]
+    print(f"Loading {len(records)} records...")
+
+    conn = psycopg2.connect(**DB_CONN)
+    cur = conn.cursor()
+    inserted = skipped = 0
+
+    for r in records:
+        cur.execute("""
+            INSERT INTO raw_bronze.config_model_region_availability (
+                model_variant, source_region, deployed_at,
+                is_active, snapshot_date, source_file
+            ) VALUES (
+                %(model_variant)s, %(source_region)s, %(deployed_at)s,
+                %(is_active)s, %(snapshot_date)s, 'model_region_availability.json'
+            )
+            ON CONFLICT (model_variant, source_region, snapshot_date) DO NOTHING
+        """, r)
+        if cur.rowcount == 1:
+            inserted += 1
+        else:
+            skipped += 1
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f"Done — inserted: {inserted}, skipped (already exists): {skipped}")
+
+
+with DAG(
+    dag_id="load_config_bronze",
+    description="One-time load of model config JSON files into bronze tables",
+    start_date=datetime(2026, 1, 1),
+    schedule=None,    # manual trigger only — never runs on a schedule
+    catchup=False,
+    tags=["bronze", "config", "one-time"],
+) as dag:
+
+    task_models = PythonOperator(
+        task_id="load_model_configuration",
+        python_callable=load_model_configuration,
+    )
+
+    task_regions = PythonOperator(
+        task_id="load_model_region_availability",
+        python_callable=load_model_region_availability,
+    )
+
+    # Load model config first, then region availability
+    task_models >> task_regions</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Key things to understand:</strong><br><br>
+    <code>schedule=None</code> — never runs automatically. Only runs when you manually trigger it.<br><br>
+    <code>ON CONFLICT ... DO NOTHING</code> — if the record already exists, the insert is silently skipped. Makes the DAG safe to run more than once.<br><br>
+    <code>routing_strategy</code> and <code>inference_region</code> from the JSON are skipped intentionally — not columns in the bronze table, will be derived in silver.<br><br>
+    <code>/opt/airflow/database/config</code> — inside the container, maps to your local <code>database/config/</code> via the volume mount configured in Runbook 1.
+  </div>
+
+  <h3>Step 3c — Trigger the DAG from the Airflow UI</h3>
+
+  <ol>
+    <li>Open <a href="http://localhost:8080" target="_blank">localhost:8080</a> — login: <code>admin</code> / <code>admin</code></li>
+    <li>Find <strong>load_config_bronze</strong> in the DAG list</li>
+    <li>Click the <strong>▶ play button</strong> on the right → <strong>Trigger DAG</strong></li>
+    <li>Click the DAG name to open it, then click a task circle to view the logs</li>
+  </ol>
+
+  <div class="callout warning"><strong>DAG not appearing in the list?</strong>Airflow scans for DAGs every 30 seconds. Wait and refresh. Still missing? Check logs: <code>docker compose logs airflow-scheduler --tail=20</code> — look for a Python syntax error in the DAG file.</div>
+
+  <div class="checkpoint">Both tasks show green circles. Logs say <code>inserted: 20</code> for model_configuration and <code>inserted: 41</code> for region_availability.</div>
+
+  <h3>Verify the data landed in PostgreSQL</h3>
+
+  <p>Run these two queries to confirm the rows are in the bronze tables:</p>
+  <div class="code-wrap"><pre><code>docker exec -it postgres psql -U mds_user -d btg_resource_utilization -c "SELECT COUNT(*), MIN(snapshot_date), MAX(snapshot_date) FROM raw_bronze.config_model_dimensions;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="code-wrap"><pre><code>docker exec -it postgres psql -U mds_user -d btg_resource_utilization -c "SELECT COUNT(*), MIN(snapshot_date), MAX(snapshot_date) FROM raw_bronze.config_model_region_availability;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint"><code>config_model_dimensions</code> returns <code>count = 20</code>. <code>config_model_region_availability</code> returns <code>count = 41</code>.</div>
+
+  <p>You can also browse the data visually in pgAdmin — expand <strong>raw_bronze → Tables</strong>, right-click <code>config_model_dimensions</code> → <strong>View/Edit Data → All Rows</strong>.</p>
+
+  <p>Commit:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add .
+git commit -m "add Airflow DAG for bronze config loading"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+</section>
+
+<!-- STEP 8 -->
+<!-- STEP 4 -->
+<section id="step8">
+  <div class="step-header"><div class="sc">8</div><h2>Run the data population script</h2></div>
+
+  <div class="callout info"><strong>What is synthetic data?</strong>Made-up data that looks and behaves like real data but contains no real customer information. We use it so you can learn with data that tells a real story without exposing anyone's private information.</div>
+
+  <div class="callout info"><strong>What is a data population script?</strong>A SQL file containing INSERT statements that load rows into your bronze tables. It lives in <code>database/data_population/</code> — not to be confused with dbt seeds, which are CSV lookup tables in <code>dbt/seeds/</code>. These are two completely different things.</div>
+
+  <p>There are four data population scripts. Confirm they are all there:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+ls database/data_population/</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">You see four SQL files listed.</div>
+
+  <div class="callout warning"><strong>Do not modify the data population scripts.</strong>Run them exactly as provided. The dbt models written later are built to work with this specific data.</div>
+
+  <p>Run all four scripts in order. You have two options — choose whichever you prefer:</p>
+
+  <h3>Option A — Terminal</h3>
+  <p>Run each script one at a time from the Terminal:</p>
+  <div class="code-wrap"><pre><code>docker exec -i postgres psql -U mds_user -d btg_resource_utilization < database/data_population/003_seed_bronze_tables.sql
+docker exec -i postgres psql -U mds_user -d btg_resource_utilization < database/data_population/004_seed_quota_rate_limit_tables.sql
+docker exec -i postgres psql -U mds_user -d btg_resource_utilization < database/data_population/005_seed_revenue_account_daily.sql
+docker exec -i postgres psql -U mds_user -d btg_resource_utilization < database/data_population/006_seed_quota_customer_rate_limit_requests.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout warning"><strong>Each script may take 1–2 minutes.</strong>INSERT statements scrolling by is normal. Wait for the Terminal prompt to return before running the next one.</div>
+
+  <h3>Option B — pgAdmin Query Tool</h3>
+  <ol>
+    <li>In pgAdmin, right-click <strong>btg_resource_utilization</strong> → <strong>Query Tool</strong></li>
+    <li>Click the folder icon (Open File) in the toolbar</li>
+    <li>Navigate to your local <code>database/data_population/</code> folder and open the first script</li>
+    <li>Click the ▶ <strong>Execute</strong> button (or press <strong>F5</strong>)</li>
+    <li>Wait for it to finish, then repeat for each of the four scripts in order</li>
+  </ol>
+
+  <div class="callout info"><strong>Run order matters.</strong>Some scripts reference data inserted by earlier ones. Always run them in number order: 003 → 004 → 005 → 006.</div>
+
+</section>
+
+<!-- STEP 9 -->
+<!-- STEP 5 -->
+<section id="step9">
+  <div class="step-header"><div class="sc">9</div><h2>Verify all data</h2></div>
+
+  <div class="callout info"><strong>-i vs -it — what is the difference?</strong>
+    <code>-i</code> = pipe a file in<br>
+    <code>-it</code> = open a live interactive session to type queries yourself
+  </div>
+
+  <p>Open an interactive psql session:</p>
+  <div class="code-wrap"><pre><code>docker exec -it postgres psql -U mds_user -d btg_resource_utilization</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Count rows in every bronze table:</p>
+  <div class="code-wrap"><pre class="sql"><code>SELECT tablename,
+       (xpath('/row/cnt/text()', query_to_xml(
+           format('SELECT COUNT(*) AS cnt FROM raw_bronze.%I', tablename),
+           false, true, '')))[1]::text::int AS row_count
+FROM pg_tables
+WHERE schemaname = 'raw_bronze'
+ORDER BY tablename;</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Peek at the config data loaded by the Airflow DAG:</p>
+  <div class="code-wrap"><pre class="sql"><code>SELECT publisher_name, model_variant, accelerator_type, replicas
+FROM raw_bronze.config_model_dimensions
+ORDER BY publisher_name, model_variant
+LIMIT 5;</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Exit:</p>
+  <div class="code-wrap"><pre><code>\q</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">All 10 bronze tables exist. <code>config_model_dimensions</code> has 20 rows (from Airflow DAG), <code>config_model_region_availability</code> has 41 rows, and the other tables have data from the SQL seed script.</div>
+</section>
+
+<!-- TROUBLESHOOTING -->
+<section id="troubleshooting">
+  <div class="step-header"><div class="sc gray">?</div><h2>Troubleshooting</h2></div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">dbt debug says "could not connect to server" <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>PostgreSQL is not running. Check: <code>docker compose ps</code>. If postgres shows Exit: <code>docker compose start postgres</code></p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">"No such file or directory: /opt/airflow/dbt" <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>dbt volume mount missing. Both Airflow services need:</p>
+      <div class="code-wrap"><pre><code>      - ./dbt:/opt/airflow/dbt</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>Add it, save, then: <code>docker compose down &amp;&amp; docker compose up -d</code></p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">Airflow DAG not appearing in the UI <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>Wait 30 seconds and refresh. Still missing?</p>
+      <div class="code-wrap"><pre><code>docker compose logs airflow-scheduler --tail=20</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>Look for a Python syntax error in the DAG file. Fix it and wait 30 seconds.</p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">DAG task fails with "No such file: /opt/airflow/database/config" <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>The database volume mount is missing from <code>docker-compose.yml</code>. This should have been set up in Runbook 1. Open <code>docker-compose.yml</code> and confirm both <code>airflow-webserver</code> and <code>airflow-scheduler</code> have this line in their volumes section:</p>
+      <div class="code-wrap"><pre><code>      - ./database:/opt/airflow/database</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>If missing, add it, save, then: <code>docker compose down &amp;&amp; docker compose up -d</code></p>
+    </div>
+  </div>
+
+
+
+
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">profiles.yml accidentally committed to GitHub <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <div class="code-wrap"><pre><code>git rm --cached dbt/profiles.yml
+git commit -m "remove profiles.yml - contains password"
+git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>Confirm <code>dbt/profiles.yml</code> is in <code>.gitignore</code>. Since this is a local password only, no further action is needed — but in production, rotate the password immediately.</p>
+    </div>
+  </div>
+</section>
+
+<div class="whats-next">
+  <h2>What's next? 🎯</h2>
+  <p>Your database is set up with all four environment schemas, data is loaded, and dbt is connected with a four-target profiles.yml. Open <strong>Runbook 3</strong> to continue — load seed data, run your first models in your personal schema, and learn how to develop efficiently with <code>--defer</code>.</p>
+</div>
+
+<footer>
+  Runbook 2 · dbt · Mac · March 2026<br>
+  Made with the belief that great data skills belong to everyone.
+</footer>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+function copyCode(btn) {
+  const code = btn.previousElementSibling.innerText;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }).catch(() => {
+    // Fallback for browsers that block clipboard without HTTPS
+    const ta = document.createElement('textarea');
+    ta.value = code;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = 'copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+function toggleToc() {
+  const body = document.getElementById('toc-body');
+  const btn = document.getElementById('toc-btn');
+  const hidden = body.classList.toggle('hidden');
+  btn.textContent = hidden ? 'Show' : 'Hide';
+}
+function t(el) {
+  const a = el.nextElementSibling;
+  const open = a.classList.contains('open');
+  document.querySelectorAll('.trouble-a')

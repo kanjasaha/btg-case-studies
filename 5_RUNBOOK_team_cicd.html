@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Team Workflow & CI/CD — personal → dev → CI → production</title>
+<style>
+  :root {
+    --bg:#ffffff;--bg2:#f8f7f4;--bg3:#f0ede8;--text:#1a1a18;--muted:#6b6b65;
+    --border:#e0ddd6;--accent:#2563eb;--accent-light:#eff6ff;
+    --green:#166534;--green-bg:#f0fdf4;--green-border:#bbf7d0;
+    --amber:#92400e;--amber-bg:#fffbeb;--amber-border:#fde68a;
+    --red:#991b1b;--red-bg:#fef2f2;--red-border:#fecaca;
+    --purple:#5b21b6;--purple-bg:#f5f3ff;--purple-border:#ddd6fe;
+    --bronze:#92400e;--bronze-bg:#fff7ed;--bronze-border:#fed7aa;
+    --silver:#374151;--silver-bg:#f9fafb;--silver-border:#d1d5db;
+    --gold:#854d0e;--gold-bg:#fefce8;--gold-border:#fef08a;
+    --mono:'SF Mono','Fira Code','Consolas',monospace;--radius:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;line-height:1.75;color:var(--text);background:var(--bg);max-width:820px;margin:0 auto;padding:40px 24px 80px;}
+  .hero{border-bottom:2px solid var(--border);padding-bottom:32px;margin-bottom:40px;}
+  .hero h1{font-size:2rem;font-weight:700;letter-spacing:-.02em;margin-bottom:6px;}
+  .hero .subtitle{color:var(--muted);font-size:1rem;}
+  .badge{display:inline-block;background:var(--purple-bg);color:var(--purple);font-size:12px;font-weight:600;padding:2px 10px;border-radius:20px;margin-bottom:12px;letter-spacing:.04em;}
+  .prereq{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:40px;font-size:14.5px;}
+  .prereq strong{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;}
+  #toc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:48px;overflow:hidden;}
+  .toc-header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg3);}
+  .toc-title{font-size:14px;font-weight:600;}
+  .toc-toggle{background:none;border:1px solid var(--border);border-radius:4px;padding:3px 10px;font-size:12px;color:var(--muted);cursor:pointer;}
+  .toc-toggle:hover{background:var(--border);}
+  #toc-body{display:grid;grid-template-columns:repeat(3,1fr);}
+  .toc-section{padding:16px 20px;border-right:1px solid var(--border);}
+  .toc-section:last-child{border-right:none;}
+  .toc-section-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px;}
+  .toc-link{display:flex;align-items:center;gap:7px;color:var(--accent);text-decoration:none;font-size:13.5px;margin-bottom:6px;padding:3px 0;line-height:1.3;}
+  .toc-link:hover{text-decoration:underline;}
+  .sn{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:var(--accent);color:#fff;border-radius:50%;font-size:10px;font-weight:700;flex-shrink:0;}
+  .sn.gray{background:var(--muted);}
+  .sn.purple{background:var(--purple);}
+  #toc-body.hidden{display:none;}
+  section{margin-bottom:56px;scroll-margin-top:24px;}
+  .step-header{display:flex;align-items:center;gap:14px;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+  .sc{display:flex;align-items:center;justify-content:center;width:40px;height:40px;background:var(--accent);color:#fff;border-radius:50%;font-size:16px;font-weight:700;flex-shrink:0;}
+  .sc.gray{background:var(--muted);}
+  .sc.purple{background:var(--purple);}
+  .step-header h2{font-size:1.35rem;font-weight:700;letter-spacing:-.01em;}
+  h3{font-size:1rem;font-weight:600;margin:24px 0 10px;}
+  p{margin-bottom:14px;}
+  .callout{border-radius:var(--radius);padding:14px 18px;margin:18px 0;font-size:14.5px;border-left:4px solid;line-height:1.65;}
+  .callout strong{display:block;margin-bottom:4px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;}
+  .callout.info{background:var(--accent-light);border-color:var(--accent);color:#1e3a6e;}
+  .callout.success{background:var(--green-bg);border-color:#4ade80;color:var(--green);}
+  .callout.warning{background:var(--amber-bg);border-color:#fbbf24;color:var(--amber);}
+  .callout.error{background:var(--red-bg);border-color:#f87171;color:var(--red);}
+  .callout.purple{background:var(--purple-bg);border-color:#a78bfa;color:var(--purple);}
+  .code-wrap{position:relative;margin:14px 0;}
+  pre{background:#1e1e1e;color:#d4d4d4;border-radius:var(--radius);padding:16px 20px;overflow-x:auto;font-family:var(--mono);font-size:14px;line-height:1.6;}
+  pre.output{background:#252525;color:#9a9a94;}
+  pre.yaml{background:#0d1117;color:#e6edf3;}
+  pre.sql{background:#0d1117;color:#e6edf3;}
+  code{font-family:var(--mono);font-size:13.5px;background:var(--bg3);padding:1px 6px;border-radius:4px;color:#c0392b;}
+  pre code{background:none;color:inherit;padding:0;font-size:inherit;}
+  .copy-btn{position:absolute;top:10px;right:10px;background:#3a3a3a;color:#ccc;border:none;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:var(--mono);transition:background .15s;}
+  .copy-btn:hover{background:#555;}
+  .copy-btn.copied{background:#166534;color:#fff;}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px;}
+  th{background:var(--bg2);text-align:left;padding:10px 14px;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border);}
+  td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:var(--bg2);}
+  .checkpoint{background:var(--green-bg);border:1px solid var(--green-border);border-radius:var(--radius);padding:14px 18px;margin:20px 0;font-size:14.5px;color:var(--green);}
+  .checkpoint::before{content:'✅  You should see: ';font-weight:700;}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0;font-size:13.5px;}
+  .flow-box{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 16px;font-weight:600;text-align:center;}
+  .flow-box.you{background:var(--accent-light);border-color:var(--accent);color:#1e3a6e;}
+  .flow-box.auto{background:var(--green-bg);border-color:var(--green-border);color:var(--green);}
+  .flow-box.prod{background:var(--amber-bg);border-color:var(--amber-border);color:var(--amber);}
+  .flow-arrow{color:var(--muted);font-size:20px;font-weight:300;}
+  .persona{border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin:16px 0;background:var(--bg2);}
+  .persona-header{font-weight:700;margin-bottom:8px;font-size:15px;}
+  .persona-alice{border-left:4px solid #2563eb;}
+  .persona-bob{border-left:4px solid #16a34a;}
+  .tree{background:#1e1e1e;color:#d4d4d4;border-radius:var(--radius);padding:18px 22px;font-family:var(--mono);font-size:13.5px;line-height:1.9;margin:16px 0;}
+  .tree .folder{color:#569cd6;}
+  .tree .file{color:#9cdcfe;}
+  .tree .dim{color:#6a9955;}
+  .trouble-item{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;}
+  .trouble-q{background:var(--bg2);padding:12px 18px;font-weight:600;font-size:14.5px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none;}
+  .trouble-q:hover{background:var(--bg3);}
+  .trouble-q .arr{font-size:12px;color:var(--muted);transition:transform .2s;}
+  .trouble-a{padding:0 18px;max-height:0;overflow:hidden;transition:max-height .3s ease,padding .2s;font-size:14.5px;}
+  .trouble-a.open{max-height:600px;padding:14px 18px;}
+  .trouble-q.active .arr{transform:rotate(180deg);}
+  .whats-next{background:linear-gradient(135deg,#f5f3ff 0%,#f0fdf4 100%);border:1px solid var(--border);border-radius:12px;padding:28px 32px;margin-top:40px;}
+  .whats-next h2{font-size:1.2rem;margin-bottom:14px;}
+  ol{padding-left:22px;margin:12px 0 16px;}
+  ol li{margin-bottom:8px;}
+  ul{padding-left:22px;margin:12px 0 16px;}
+  ul li{margin-bottom:6px;}
+  footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--border);text-align:center;font-size:13px;color:var(--muted);}
+  @media(max-width:640px){#toc-body{grid-template-columns:1fr 1fr;}.hero h1{font-size:1.5rem;}}
+  @media(max-width:420px){#toc-body{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="badge">RUNBOOK 5 · TEAM WORKFLOW · CI/CD</div>
+  <h1>Team Workflow &amp; CI/CD 👥</h1>
+  <p class="subtitle">personal → dev → CI → production. How real teams ship data changes without breaking things.</p>
+</div>
+
+<div class="prereq">
+  <strong>Before you start</strong>
+  Complete <strong>Runbooks 1, 2, 3, and 4</strong> first. Your stack must be running, all models built in your personal schema, and Airflow running the production pipeline on a schedule. You also need a GitHub account and your repo pushed to GitHub.
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<nav id="toc">
+  <div class="toc-header">
+    <span class="toc-title">📋 Table of Contents</span>
+    <button class="toc-toggle" onclick="toggleToc()" id="toc-btn">Hide</button>
+  </div>
+  <div id="toc-body">
+    <div class="toc-section">
+      <div class="toc-section-label">Understand</div>
+      <a href="#overview" class="toc-link"><span class="sn gray">→</span>The full flow</a>
+      <a href="#who-does-what" class="toc-link"><span class="sn gray">→</span>Who does what</a>
+      <a href="#branches" class="toc-link"><span class="sn gray">→</span>Git branches explained</a>
+    </div>
+    <div class="toc-section">
+      <div class="toc-section-label">Set up CI/CD</div>
+      <a href="#step1" class="toc-link"><span class="sn">1</span>Set up GitHub Actions</a>
+      <a href="#step2" class="toc-link"><span class="sn">2</span>Add GitHub Secrets</a>
+      <a href="#step3" class="toc-link"><span class="sn">3</span>Create the CI workflow</a>
+      <a href="#step4" class="toc-link"><span class="sn">4</span>Create the prod workflow</a>
+    </div>
+    <div class="toc-section">
+      <div class="toc-section-label">Do it</div>
+      <a href="#step5" class="toc-link"><span class="sn">5</span>Your first feature branch</a>
+      <a href="#step6" class="toc-link"><span class="sn">6</span>Open a Pull Request</a>
+      <a href="#step7" class="toc-link"><span class="sn">7</span>Watch CI run</a>
+      <a href="#step8" class="toc-link"><span class="sn">8</span>Merge to dev then main</a>
+      <a href="#team-sim" class="toc-link"><span class="sn purple">→</span>Team simulation</a>
+      <a href="#troubleshooting" class="toc-link"><span class="sn gray">?</span>Troubleshooting</a>
+    </div>
+  </div>
+</nav>
+
+<!-- OVERVIEW -->
+<section id="overview">
+  <div class="step-header">
+    <div class="sc gray" style="font-size:18px;">→</div>
+    <h2>The full flow — personal to production</h2>
+  </div>
+
+  <p>Here is the complete journey a code change makes from the moment a developer writes it to the moment it is live in production. Every step is described in plain English below the diagram.</p>
+
+  <div class="flow">
+    <div class="flow-box you">Personal schema<br><small style="font-weight:400;">you develop here</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box you">Feature branch<br><small style="font-weight:400;">git checkout -b</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box auto">Pull Request<br><small style="font-weight:400;">you open this</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box auto">CI runs<br><small style="font-weight:400;">automatic</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box auto">Code review<br><small style="font-weight:400;">teammate approves</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box auto">Merge to dev<br><small style="font-weight:400;">dev build auto-runs</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box auto">PR to main<br><small style="font-weight:400;">CI runs again</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box prod">Production<br><small style="font-weight:400;">Airflow deploys</small></div>
+  </div>
+
+  <h3>Step by step</h3>
+
+  <table>
+    <thead><tr><th>Step</th><th>What happens</th><th>Who/what does it</th></tr></thead>
+    <tbody>
+      <tr><td>1. Write code</td><td>Developer writes or edits a dbt model in their personal schema</td><td>You</td></tr>
+      <tr><td>2. Test locally</td><td><code>dbt build --select state:modified+ --defer --state ./prod-state/</code></td><td>You</td></tr>
+      <tr><td>3. Create branch</td><td><code>git checkout -b feature/my-change</code></td><td>You</td></tr>
+      <tr><td>4. Push and open PR</td><td><code>git push origin feature/my-change</code> then open PR on GitHub</td><td>You</td></tr>
+      <tr><td>5. CI runs</td><td>GitHub Actions builds modified models only and runs all tests</td><td>GitHub Actions (automatic)</td></tr>
+      <tr><td>6. Code review</td><td>A teammate reads your code and approves or requests changes</td><td>Teammate</td></tr>
+      <tr><td>7. Merge to dev</td><td>PR merges into the dev branch — GitHub Actions builds all models into dev schemas</td><td>GitHub Actions (automatic)</td></tr>
+      <tr><td>8. PR to main</td><td>A release manager (or you) opens a PR from dev to main — CI runs again</td><td>You or release manager</td></tr>
+      <tr><td>9. Production</td><td>Merge triggers Airflow to run <code>dbt build --target prod</code> — or Airflow runs it on schedule tonight</td><td>Airflow (automatic)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info"><strong>Key insight: you only do steps 1–4 and 6. Everything else is automated.</strong>
+    Once you open your Pull Request, the pipeline takes over. Your only job is to write good code, test it locally, and respond to code review feedback. The rest happens without you.
+  </div>
+
+</section>
+
+<!-- WHO DOES WHAT -->
+<section id="who-does-what">
+  <div class="step-header">
+    <div class="sc gray" style="font-size:18px;">→</div>
+    <h2>Who does what</h2>
+  </div>
+
+  <table>
+    <thead><tr><th>Role</th><th>Responsibilities</th><th>Never does</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Developer</strong><br>(you)</td>
+        <td>Writes models, tests locally in personal schema, creates feature branches, opens PRs, responds to review</td>
+        <td>Run <code>--target prod</code> manually. Touch the prod schemas directly.</td>
+      </tr>
+      <tr>
+        <td><strong>Reviewer</strong><br>(teammate)</td>
+        <td>Reviews SQL logic, checks test coverage, approves or requests changes on PRs</td>
+        <td>Approve code without reading it. Merge without CI passing.</td>
+      </tr>
+      <tr>
+        <td><strong>GitHub Actions</strong><br>(robot)</td>
+        <td>Runs CI on every PR, builds dev on merge, triggers prod on merge to main</td>
+        <td>Approve code. Make judgment calls. Skip tests.</td>
+      </tr>
+      <tr>
+        <td><strong>Airflow</strong><br>(scheduler)</td>
+        <td>Runs <code>dbt build --target prod</code> on a schedule and on merge to main</td>
+        <td>Run in personal or dev. Be triggered by humans in normal operation.</td>
+      </tr>
+      <tr>
+        <td><strong>Release Manager</strong><br>(senior dev or lead)</td>
+        <td>Opens the PR from dev to main. Reviews what is in the release. Decides timing.</td>
+        <td>Deploy directly. Skip the PR process.</td>
+      </tr>
+    </tbody>
+  </table>
+
+</section>
+
+<!-- GIT BRANCHES -->
+<section id="branches">
+  <div class="step-header">
+    <div class="sc gray" style="font-size:18px;">→</div>
+    <h2>Git branches explained</h2>
+  </div>
+
+  <p>This project uses three types of branches. Understanding each one is essential before writing a single command.</p>
+
+  <table>
+    <thead><tr><th>Branch</th><th>Purpose</th><th>Who creates it</th><th>Merges into</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>main</code></td>
+        <td>The production branch. What Airflow runs. Protected — nobody pushes directly to main.</td>
+        <td>Created once when the repo was initialized</td>
+        <td>Nothing — this is the destination</td>
+      </tr>
+      <tr>
+        <td><code>dev</code></td>
+        <td>The shared integration branch. Feature branches merge here first for team visibility.</td>
+        <td>Created once — lives permanently alongside main</td>
+        <td><code>main</code> (via PR, on release)</td>
+      </tr>
+      <tr>
+        <td><code>feature/*</code></td>
+        <td>Your personal working branch. One branch per piece of work. Short-lived — deleted after merge.</td>
+        <td>You create one every time you start new work</td>
+        <td><code>dev</code> (via PR)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warning"><strong>Never push directly to main or dev.</strong>
+    Always work on a feature branch. Open a Pull Request. Let CI run. Get a review. Then merge.<br><br>
+    Direct pushes to main bypass every safety check — no CI, no review, no audit trail. Most teams configure GitHub to block direct pushes to main entirely (branch protection rules — covered in Step 1).
+  </div>
+
+  <h3>Setting up the dev branch</h3>
+  <p>If your repo only has <code>main</code>, create the <code>dev</code> branch now:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git checkout main
+git pull
+git checkout -b dev
+git push origin dev</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="checkpoint">GitHub shows a <code>dev</code> branch alongside <code>main</code> in the repository.</div>
+
+</section>
+
+<!-- STEP 1: GITHUB ACTIONS SETUP -->
+<section id="step1">
+  <div class="step-header"><div class="sc">1</div><h2>Set up GitHub Actions and branch protection</h2></div>
+
+  <p>GitHub Actions is already built into every GitHub repository — nothing to install. You just need to create workflow files and configure branch protection.</p>
+
+  <h3>Enable branch protection on main</h3>
+
+  <ol>
+    <li>Open your repository on GitHub</li>
+    <li>Go to <strong>Settings → Branches → Add branch protection rule</strong></li>
+    <li>Branch name pattern: <code>main</code></li>
+    <li>Check <strong>Require a pull request before merging</strong></li>
+    <li>Check <strong>Require status checks to pass before merging</strong></li>
+    <li>Check <strong>Do not allow bypassing the above settings</strong></li>
+    <li>Click <strong>Create</strong></li>
+  </ol>
+
+  <div class="callout info"><strong>What does branch protection do?</strong>
+    It makes it physically impossible to push directly to main. Anyone who tries gets a rejection from GitHub. Every change must go through a Pull Request — which means CI runs, a reviewer sees it, and there is a permanent record of what changed and when.
+  </div>
+
+  <h3>Create the GitHub Actions folder</h3>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+mkdir -p .github/workflows
+touch .github/workflows/.gitkeep</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Where do workflow files live?</strong>
+    GitHub Actions looks for workflow files in <code>.github/workflows/</code> at the root of your repository. Any <code>.yml</code> file there is automatically picked up — no registration or configuration needed.
+  </div>
+
+</section>
+
+<!-- STEP 2: GITHUB SECRETS -->
+<section id="step2">
+  <div class="step-header"><div class="sc">2</div><h2>Add GitHub Secrets</h2></div>
+
+  <p>GitHub Actions needs your database credentials to run dbt. You never put passwords in code — they go in GitHub Secrets, which are encrypted and injected as environment variables at runtime.</p>
+
+  <ol>
+    <li>Open your repo on GitHub → <strong>Settings → Secrets and variables → Actions</strong></li>
+    <li>Click <strong>New repository secret</strong> for each of the following:</li>
+  </ol>
+
+  <table>
+    <thead><tr><th>Secret name</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td><code>DBT_HOST</code></td><td><code>localhost</code></td></tr>
+      <tr><td><code>DBT_PORT</code></td><td><code>5432</code></td></tr>
+      <tr><td><code>DBT_USER</code></td><td><code>mds_user</code></td></tr>
+      <tr><td><code>DBT_PASSWORD</code></td><td><code>mds_password</code></td></tr>
+      <tr><td><code>DBT_DBNAME</code></td><td><code>btg_resource_utilization</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warning"><strong>For this tutorial only — localhost limitation.</strong>
+    In this local tutorial, PostgreSQL runs on your Mac. GitHub Actions runs on GitHub's servers — it cannot reach your Mac's localhost. For the CI workflow to actually connect to your database, you would need a cloud database (like Supabase or RDS).<br><br>
+    In this runbook you will still create and practice the full CI workflow. The database connection will fail in GitHub Actions (because it cannot reach your Mac), but you will learn to simulate CI locally using the exact same commands — which is what matters for your development practice.<br><br>
+    When you move to a real cloud database, just update these secrets with the cloud credentials and CI will work end-to-end automatically.
+  </div>
+
+</section>
+
+<!-- STEP 3: CI WORKFLOW -->
+<section id="step3">
+  <div class="step-header"><div class="sc">3</div><h2>Create the CI workflow</h2></div>
+
+  <p>This workflow runs automatically on every Pull Request. It builds only the models you changed and runs all their tests.</p>
+
+  <div class="code-wrap"><pre><code>code .github/workflows/dbt_ci.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Type this exactly, then save with <strong>⌘ + S</strong>:</p>
+
+  <div class="code-wrap"><pre class="yaml"><code># .github/workflows/dbt_ci.yml
+# Runs automatically on every Pull Request to dev or main.
+# Builds only modified models and runs all their tests.
+# Blocks the PR from merging if any test fails.
+
+name: dbt CI
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+    paths:
+      - 'dbt/models/**'
+      - 'dbt/tests/**'
+      - 'dbt/macros/**'
+      - 'dbt/seeds/**'
+      - 'dbt/snapshots/**'
+
+env:
+  DBT_HOST: ${{ secrets.DBT_HOST }}
+  DBT_PORT: ${{ secrets.DBT_PORT }}
+  DBT_USER: ${{ secrets.DBT_USER }}
+  DBT_PASSWORD: ${{ secrets.DBT_PASSWORD }}
+  DBT_DBNAME: ${{ secrets.DBT_DBNAME }}
+
+jobs:
+  dbt-ci:
+    name: dbt CI — build modified models and run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: |
+          pip install dbt-core dbt-postgres
+          cd dbt && dbt deps
+
+      - name: Download production manifest for Slim CI
+        uses: actions/download-artifact@v4
+        with:
+          name: dbt-manifest
+          path: ./prod-state/
+        continue-on-error: true
+        # First run will not have a manifest yet — that is fine.
+        # Without it, dbt builds everything. With it, only modified models.
+
+      - name: Run Slim CI — modified models only
+        run: |
+          cd dbt
+          if [ -f "../prod-state/manifest.json" ]; then
+            echo "Prod manifest found — running Slim CI"
+            dbt build \
+              --select state:modified+ \
+              --defer \
+              --state ../prod-state/ \
+              --target ci \
+              --profiles-dir .
+          else
+            echo "No prod manifest — running full build"
+            dbt build \
+              --target ci \
+              --profiles-dir .
+          fi
+
+      - name: Save manifest for next CI run
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-manifest
+          path: dbt/target/manifest.json
+          retention-days: 7</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What is Slim CI?</strong>
+    The key command is <code>dbt build --select state:modified+ --defer --state ./prod-state/</code>.<br><br>
+    <code>state:modified+</code> — only build models whose SQL actually changed in this PR, plus all their downstream dependents.<br><br>
+    <code>--defer --state ./prod-state/</code> — for any upstream model you didn't change, read from the production table instead of rebuilding it.<br><br>
+    Result: CI only builds 2-3 models instead of the entire project. It's fast, cheap, and still runs all tests on full prod-scale data via defer.
+  </div>
+
+  <div class="callout info"><strong>What tests does CI run?</strong>
+    CI runs ALL tests on every model it builds — both tests that existed before your PR and any new tests you added in your PR. This catches two things:<br><br>
+    — Did your change break something that was already working? (existing tests)<br>
+    — Does your new logic actually pass the quality checks you defined? (new tests)
+  </div>
+
+</section>
+
+<!-- STEP 4: PROD WORKFLOW -->
+<section id="step4">
+  <div class="step-header"><div class="sc">4</div><h2>Create the production workflow</h2></div>
+
+  <p>This workflow triggers when code merges into main. It runs the full dbt build against production schemas. Airflow also runs on a schedule — this workflow handles the code-change-triggered deployment.</p>
+
+  <div class="code-wrap"><pre><code>code .github/workflows/dbt_prod.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="code-wrap"><pre class="yaml"><code># .github/workflows/dbt_prod.yml
+# Triggers when code merges to main.
+# Runs the full production build — all models, all tests.
+# Nobody runs this manually — GitHub triggers it on merge.
+
+name: dbt Production
+
+on:
+  push:
+    branches:
+      - main       # triggers on merge to main
+  workflow_dispatch: # allows manual trigger from GitHub UI if needed
+
+env:
+  DBT_HOST: ${{ secrets.DBT_HOST }}
+  DBT_PORT: ${{ secrets.DBT_PORT }}
+  DBT_USER: ${{ secrets.DBT_USER }}
+  DBT_PASSWORD: ${{ secrets.DBT_PASSWORD }}
+  DBT_DBNAME: ${{ secrets.DBT_DBNAME }}
+
+jobs:
+  dbt-prod:
+    name: dbt Production — full build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: |
+          pip install dbt-core dbt-postgres
+          cd dbt && dbt deps
+
+      - name: Check source freshness
+        run: |
+          cd dbt
+          dbt source freshness --profiles-dir . --target prod
+        continue-on-error: true
+
+      - name: Run full production build
+        run: |
+          cd dbt
+          dbt build --target prod --profiles-dir .
+
+      - name: Save production manifest
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-manifest
+          path: dbt/target/manifest.json
+          retention-days: 7
+          # This manifest is used by CI on the next PR for Slim CI comparison</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Why does prod save the manifest?</strong>
+    After each successful production run, GitHub saves the <code>manifest.json</code> as an artifact. The next time a developer opens a Pull Request, the CI workflow downloads this manifest and uses it to determine which models changed — enabling Slim CI. This is the link between prod and CI.
+  </div>
+
+  <p>Commit both workflow files:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git add .github/
+git commit -m "add CI and production GitHub Actions workflows"
+git push origin dev</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">On GitHub, under your repo's <strong>Actions</strong> tab, you see <strong>dbt CI</strong> and <strong>dbt Production</strong> listed as available workflows.</div>
+
+</section>
+
+<!-- STEP 5: FEATURE BRANCH -->
+<section id="step5">
+  <div class="step-header"><div class="sc">5</div><h2>Create your first feature branch</h2></div>
+
+  <p>From this point forward you never work directly on <code>main</code> or <code>dev</code>. Every piece of work starts with a feature branch.</p>
+
+  <h3>The feature branch naming convention</h3>
+
+  <table>
+    <thead><tr><th>Format</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><code>feature/short-description</code></td><td><code>feature/add-customer-revenue-ytd</code></td></tr>
+      <tr><td><code>fix/short-description</code></td><td><code>fix/null-tokens-in-stg-open-source</code></td></tr>
+      <tr><td><code>refactor/short-description</code></td><td><code>refactor/simplify-int-revenue-daily</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Start new work — always from dev</h3>
+  <div class="code-wrap"><pre><code># Always start from the latest dev branch
+cd ~/Documents/btg-case-studies
+git checkout dev
+git pull origin dev
+
+# Create your feature branch
+git checkout -b feature/add-weekly-token-model
+
+# Confirm you are on the right branch
+git branch</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">The asterisk (*) is next to <code>feature/add-weekly-token-model</code>. You are on your feature branch.</div>
+
+  <h3>Work in your personal schema</h3>
+
+  <p>Make your changes to dbt models. Run them in your personal schema as you develop:</p>
+
+  <div class="code-wrap"><pre><code># Build and test your specific model in your personal schema
+# (--target personal is the default, so you can omit it)
+dbt build --select token_usage_model_weekly
+
+# Once happy, simulate CI locally before opening the PR
+mkdir -p prod-state
+cp dbt/target/manifest.json prod-state/manifest.json
+
+dbt build \
+  --select state:modified+ \
+  --defer \
+  --state ./prod-state/ \
+  --target personal</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout success"><strong>If this passes locally, CI will almost certainly pass too.</strong>
+    CI runs the exact same command. Running it locally first saves you from waiting for GitHub Actions to tell you something you could have caught in 30 seconds on your laptop.
+  </div>
+
+  <h3>Commit your work</h3>
+  <div class="code-wrap"><pre><code>git add dbt/models/marts/token_usage_model_weekly.sql
+git add dbt/models/marts/schema.yml
+git commit -m "add weekly token usage mart model"
+git push origin feature/add-weekly-token-model</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What makes a good commit message?</strong>
+    Short, specific, present tense. Says what changed:<br>
+    ✅ <code>"add weekly token usage mart model"</code><br>
+    ✅ <code>"fix null handling in stg_customer_details"</code><br>
+    ❌ <code>"stuff"</code><br>
+    ❌ <code>"fixed"</code><br>
+    ❌ <code>"wip"</code>
+  </div>
+
+</section>
+
+<!-- STEP 6: PULL REQUEST -->
+<section id="step6">
+  <div class="step-header"><div class="sc">6</div><h2>Open a Pull Request</h2></div>
+
+  <p>A Pull Request (PR) is a formal proposal to merge your feature branch into another branch. It is where code review happens, CI runs, and the decision to merge is made.</p>
+
+  <h3>Open the PR on GitHub</h3>
+  <ol>
+    <li>Go to your repository on GitHub</li>
+    <li>You will see a yellow banner: <strong>"feature/add-weekly-token-model had recent pushes"</strong> → click <strong>Compare &amp; pull request</strong></li>
+    <li>Set the base branch to <code>dev</code> (not main — you are merging to dev first)</li>
+    <li>Write a clear title: <code>Add weekly token usage mart model</code></li>
+    <li>In the description, explain: what you built, why, and how to verify it</li>
+    <li>Click <strong>Create pull request</strong></li>
+  </ol>
+
+  <div class="callout info"><strong>What makes a good PR description?</strong>
+    <br>
+    <strong>What:</strong> Added <code>token_usage_model_weekly</code> to <code>mart_gold</code>. Aggregates token usage per model per week from <code>int_token_usage_minute</code>.<br><br>
+    <strong>Why:</strong> Business requested weekly granularity for the Metabase weekly review dashboard.<br><br>
+    <strong>How to verify:</strong> Run <code>dbt run --select token_usage_model_weekly</code> and query <code>SELECT * FROM mart_gold.token_usage_model_weekly LIMIT 10</code>. Should return rows grouped by ISO week.<br><br>
+    <strong>Tests added:</strong> not_null on all key columns, unique on (model_variant, week_start_date).
+  </div>
+
+</section>
+
+<!-- STEP 7: WATCH CI RUN -->
+<section id="step7">
+  <div class="step-header"><div class="sc">7</div><h2>Watch CI run automatically</h2></div>
+
+  <p>The moment you opened the PR, GitHub Actions started running the CI workflow. You did not do anything — it just happened.</p>
+
+  <h3>What is happening right now</h3>
+
+  <ol>
+    <li>GitHub detects the PR and triggers the <code>dbt CI</code> workflow</li>
+    <li>A fresh Ubuntu machine spins up on GitHub's servers</li>
+    <li>It installs Python, dbt, and your packages</li>
+    <li>It downloads the latest production manifest (if one exists)</li>
+    <li>It runs <code>dbt build --select state:modified+ --defer --state ./prod-state/</code></li>
+    <li>Results are posted back to your PR as a status check</li>
+  </ol>
+
+  <h3>Watch it in real time</h3>
+  <p>On your PR page, scroll down to see the <strong>Checks</strong> section. Click <strong>Details</strong> next to the CI check to watch the live log output. You will see dbt building your models and running tests in real time.</p>
+
+  <div class="checkpoint">The CI check shows a green ✅ and your PR shows <strong>"All checks have passed"</strong>. The merge button is now active.</div>
+
+  <div class="callout error"><strong>If CI fails</strong> — click <strong>Details</strong> to see the log. dbt will show you exactly which model failed and which test violated. Fix the issue in your local personal schema, commit the fix, and push. CI runs again automatically on the new commit.</div>
+
+  <h3>Simulating CI locally when debugging</h3>
+  <p>You don't have to wait for GitHub Actions to tell you something failed. Run CI locally:</p>
+  <div class="code-wrap"><pre><code>dbt build \
+  --select state:modified+ \
+  --defer \
+  --state ./prod-state/ \
+  --target personal</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <p>Same command, same result — but on your laptop in seconds instead of waiting for GitHub.</p>
+
+</section>
+
+<!-- STEP 8: MERGE -->
+<section id="step8">
+  <div class="step-header"><div class="sc">8</div><h2>Merge to dev, then to main</h2></div>
+
+  <h3>Merge feature branch → dev</h3>
+
+  <p>CI passed. A teammate reviewed and approved. Now merge:</p>
+
+  <ol>
+    <li>On the PR page, click <strong>Merge pull request</strong> → <strong>Confirm merge</strong></li>
+    <li>GitHub merges your feature branch into dev</li>
+    <li>GitHub Actions detects the merge to dev and automatically runs the dev build</li>
+    <li>Your model now exists in the dev schemas (<code>dev_staging_silver</code>, <code>dev_mart_gold</code>)</li>
+  </ol>
+
+  <div class="callout info"><strong>What happens in dev after the merge?</strong>
+    The dev GitHub Actions workflow runs <code>dbt build --target dev</code> — a full build of all models into the dev schemas. This is the integration check: does your model work alongside everyone else's models that have already merged to dev? This is the step that catches conflicts between developers' work.
+  </div>
+
+  <p>After merging, delete the feature branch — it has served its purpose:</p>
+  <div class="code-wrap"><pre><code>git checkout dev
+git pull origin dev
+git branch -d feature/add-weekly-token-model</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>Release: merge dev → main</h3>
+
+  <p>When the team is ready to release (could be daily, weekly, or after several features accumulate in dev), a release manager opens a PR from dev to main:</p>
+
+  <ol>
+    <li>Go to GitHub → <strong>Pull requests → New pull request</strong></li>
+    <li>Base: <code>main</code>, Compare: <code>dev</code></li>
+    <li>Title: <code>Release — week of [date]</code></li>
+    <li>Describe what is in this release (all features merged to dev since last release)</li>
+    <li>CI runs one more time against the combined dev changes</li>
+    <li>Senior developer reviews and approves</li>
+    <li>Merge</li>
+  </ol>
+
+  <div class="callout info"><strong>What happens the moment you merge to main?</strong>
+    The production GitHub Actions workflow triggers automatically. It runs <code>dbt build --target prod</code> — rebuilding all models in the prod schemas. Airflow will also pick up the changes on its next scheduled run if the GitHub Actions run is faster than the schedule.<br><br>
+    From that point on, <code>prod_mart_gold</code> contains your new weekly token usage model. Metabase will see it immediately.
+  </div>
+
+  <div class="callout success"><strong>You just shipped a data model to production without touching a single prod command.</strong>
+    You wrote the model, tested it locally, opened a PR, passed CI, got a review, and merged. Everything else happened automatically. This is how professional data teams work.
+  </div>
+
+</section>
+
+<!-- TEAM SIMULATION -->
+<section id="team-sim">
+  <div class="step-header">
+    <div class="sc purple" style="font-size:14px;">👥</div>
+    <h2>Team simulation — Alice and Bob working in parallel</h2>
+  </div>
+
+  <p>The real power of this workflow becomes clear when multiple developers are working at the same time. Here is how Alice and Bob each add a model without stepping on each other.</p>
+
+  <div class="persona persona-alice">
+    <div class="persona-header">👩 Alice — adding a new mart model</div>
+    <div class="code-wrap"><pre><code>git checkout dev && git pull
+git checkout -b feature/alice-customer-ytd
+
+# Alice builds and tests in her personal schema
+dbt build --select customer_revenue_ytd --target personal
+
+# Alice simulates CI locally
+dbt build --select state:modified+ --defer --state ./prod-state/
+
+# Alice pushes and opens PR to dev
+git push origin feature/alice-customer-ytd
+# → Opens PR on GitHub
+# → CI runs automatically
+# → Teammate reviews
+# → Merges to dev</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  </div>
+
+  <div class="persona persona-bob">
+    <div class="persona-header">👨 Bob — fixing a bug in staging at the same time</div>
+    <div class="code-wrap"><pre><code>git checkout dev && git pull
+git checkout -b fix/bob-null-tokens
+
+# Bob builds and tests in HIS OWN personal schema
+# Bob's schema: dbt_bob_staging_silver, dbt_bob_mart_gold
+# Alice's work in dbt_alice_* is completely separate
+dbt build --select stg_token_usage_open_source --target personal
+
+# Bob simulates CI locally
+dbt build --select state:modified+ --defer --state ./prod-state/
+
+# Bob pushes and opens PR to dev
+git push origin fix/bob-null-tokens
+# → Opens PR on GitHub
+# → CI runs automatically — only Bob's changed model is built
+# → Alice's PR does not interfere with Bob's
+# → Teammate reviews
+# → Merges to dev</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  </div>
+
+  <div class="callout info"><strong>Why they never conflict.</strong>
+    Alice's personal schema is <code>dbt_alice_*</code>. Bob's is <code>dbt_bob_*</code>. They write to completely separate schemas and never overwrite each other's work.<br><br>
+    CI for Alice's PR only builds Alice's changed models. CI for Bob's PR only builds Bob's changed models. They run in parallel on GitHub with no interference.<br><br>
+    When both PRs merge to dev, the full dev build runs and confirms their changes work together — that is the integration check that dev provides.
+  </div>
+
+  <h3>After both merge to dev</h3>
+
+  <p>The release manager opens a PR from dev to main. The PR contains both Alice's new mart model and Bob's bug fix. CI runs once more on the combined changes. It passes. The PR merges. Production now has both changes — deployed automatically, with a full audit trail.</p>
+
+  <div class="callout success"><strong>This is production-grade data engineering.</strong>
+    Two developers worked independently, neither blocked the other, every change was reviewed and tested, and production was updated automatically. Nobody typed a prod command. Nobody broke anything.
+  </div>
+
+</section>
+
+<!-- TROUBLESHOOTING -->
+<section id="troubleshooting">
+  <div class="step-header"><div class="sc gray">?</div><h2>Troubleshooting</h2></div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">CI fails with "could not connect to server" <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>Expected in this tutorial — GitHub Actions cannot reach your Mac's PostgreSQL. This is the localhost limitation described in Step 2. The workflow itself is correct. To fix for real: migrate to a cloud database (Supabase free tier, or Neon) and update the GitHub Secrets with the cloud connection details.</p>
+      <p>To verify your CI command is correct locally: <code>dbt build --select state:modified+ --defer --state ./prod-state/ --target personal</code></p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">GitHub says "No changes to push" when I push my feature branch <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>You have not committed anything yet. Run <code>git status</code> to see what files changed. Add them with <code>git add dbt/models/path/to/your/model.sql</code> and commit with <code>git commit -m "your message"</code>. Then push.</p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">dbt build --select state:modified+ shows "no nodes selected" <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>dbt cannot detect any changes compared to the prod manifest. This means either: (1) the manifest in <code>prod-state/</code> is from the same state as your current code, or (2) you haven't saved your model file yet. Try saving the file again and running <code>dbt compile</code> first to confirm the file is being picked up.</p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">I accidentally committed to main directly <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>If branch protection is enabled, GitHub will have rejected the push. If you somehow got through:</p>
+      <div class="code-wrap"><pre><code># See what commit you made
+git log --oneline -3
+
+# Move that commit to a feature branch instead
+git checkout -b feature/accidental-main-commit
+git push origin feature/accidental-main-commit
+
+# Reset main to the previous state
+git checkout main
+git reset --hard HEAD~1
+git push --force origin main</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>Enable branch protection immediately after to prevent this happening again.</p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">My PR conflicts with dev — Git says "merge conflict" <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>Another developer merged something to dev that touches the same file as your PR. Resolve it:</p>
+      <div class="code-wrap"><pre><code>git checkout feature/your-branch
+git fetch origin
+git merge origin/dev</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>VS Code will highlight the conflicts. Edit the file to keep the correct version, then <code>git add</code> and <code>git commit</code>. Push your branch — the PR updates automatically.</p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">How do I undo a merge that went wrong? <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>If you merged to dev and something broke, the cleanest fix is a new PR that reverts the change — not a force reset (which rewrites history everyone else has already pulled):</p>
+      <div class="code-wrap"><pre><code>git checkout dev
+git pull origin dev
+git revert HEAD    # creates a new commit that undoes the last merge
+git push origin dev</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>This keeps the history clean and is safe for a shared branch.</p>
+    </div>
+  </div>
+
+</section>
+
+<div class="whats-next">
+  <h2>What's next? 🎯</h2>
+  <p>You have completed the full five-runbook series. You now have a production-grade data engineering setup with:</p>
+  <ul>
+    <li>A complete modern data stack running on your Mac (Runbook 1)</li>
+    <li>All four environment schemas configured and dbt connected (Runbook 2)</li>
+    <li>Full bronze → silver → gold pipeline built and tested (Runbook 3)</li>
+    <li>Automated production deployment via Airflow and Cosmos (Runbook 4)</li>
+    <li>Team workflow with feature branches, PRs, CI, and automated production deploys (Runbook 5)</li>
+  </ul>
+  <p style="margin-top:14px;">From here, the next steps are:</p>
+  <ul>
+    <li>Connect <strong>Metabase</strong> to <code>prod_mart_gold</code> and build dashboards that update automatically every night</li>
+    <li>Migrate to a <strong>cloud database</strong> (Supabase, Neon, or AWS RDS) to enable true end-to-end CI/CD with GitHub Actions</li>
+    <li>Add <strong>Slack or email alerts</strong> to Airflow so the team gets notified when production fails</li>
+    <li>Explore <strong>dbt docs</strong> — run <code>dbt docs generate && dbt docs serve</code> to see auto-generated lineage graphs for every model</li>
+  </ul>
+</div>
+
+<footer>
+  Runbook 5 · Team Workflow &amp; CI/CD · Mac · March 2026<br>
+  Made with the belief that great data skills belong to everyone.
+</footer>
+
+<script>
+function copyCode(btn) {
+  const code = btn.previousElementSibling.innerText;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+function toggleToc() {
+  const body = document.getElementById('toc-body');
+  const btn = document.getElementById('toc-btn');
+  const hidden = body.classList.toggle('hidden');
+  btn.textContent = hidden ? 'Show' : 'Hide';
+}
+function t(el) {
+  const a = el.nextElementSibling;
+  const open = a.classList.contains('open');
+  document.querySelectorAll('.trouble-a').forEach(x => x.classList.remove('open'));
+  document.querySelectorAll('.trouble-q').forEach(x => x.classList.remove('active'));
+  if (!open) { a.classList.add('open'); el.classList.add('active'); }
+}
+</script>
+</body>
+</html>
