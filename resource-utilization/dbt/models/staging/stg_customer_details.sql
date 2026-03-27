@@ -50,3 +50,4 @@ select
 
 from {{ source('raw_bronze', 'customer_details') }}
 -- test change
+-- test ci trigger
