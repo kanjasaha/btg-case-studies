@@ -127,6 +127,7 @@
     <div class="toc-section">
       <div class="toc-section-label">Understand</div>
       <a href="#preflight" class="toc-link"><span class="sn" style="background:#991b1b;">!</span>Pre-flight check</a>
+      <a href="#git-push" class="toc-link"><span class="sn" style="background:#24292e;font-size:8px;">git</span>Push code to GitHub</a>
       <a href="#overview" class="toc-link"><span class="sn gray">→</span>The full flow</a>
       <a href="#who-does-what" class="toc-link"><span class="sn gray">→</span>Who does what</a>
       <a href="#branches" class="toc-link"><span class="sn gray">→</span>Git branches explained</a>
@@ -320,118 +321,156 @@ git push origin dev</code></pre><button class="copy-btn" onclick="copyCode(this)
 
 </section>
 
+<!-- INITIAL GIT PUSH -->
+<section id="git-push">
+  <div class="step-header">
+    <div class="sc" style="background:#24292e;font-size:11px;">git</div>
+    <h2>Push your code to GitHub first</h2>
+  </div>
+
+  <p>Before setting up CI/CD, your code must be on GitHub. Run these from your project root:</p>
+
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
+git status</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>Clean up files that should not be committed</h3>
+
+  <div class="code-wrap"><pre><code># Add to .gitignore before staging
+echo "resource-utilization/dbt/models/staging/sources.yml.backup" >> .gitignore
+echo "resource-utilization/*.html" >> .gitignore
+echo "*.code-workspace" >> .gitignore</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout warning"><strong>Never commit these files:</strong><br><br>
+    — <code>dbt/profiles.yml</code> — contains your database password. Already in <code>.gitignore</code> from Runbook 2.<br>
+    — <code>*.code-workspace</code> — VS Code workspace settings, machine-specific.<br>
+    — <code>sources.yml.backup</code> — temp backup file.<br>
+    — <code>*.html</code> files in resource-utilization/ — Perplexity/browser artifacts, not project code.
+  </div>
+
+  <h3>Stage and commit everything</h3>
+
+  <div class="code-wrap"><pre><code>git add resource-utilization/airflow/dags/pipeline_daily.py
+git add resource-utilization/dbt/models/
+git add resource-utilization/dbt/seeds/
+git add resource-utilization/dbt/snapshots/
+git add resource-utilization/dbt/dbt_project.yml
+git add .gitignore
+git status</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Review what's staged before committing.</strong>
+    Scan the list — confirm no <code>profiles.yml</code>, no <code>.code-workspace</code>, no backup files appear. If anything looks wrong, unstage it: <code>git restore --staged path/to/file</code>.
+  </div>
+
+  <div class="code-wrap"><pre><code>git commit -m "add dbt models, DAG, seeds, snapshots and updated runbooks"
+git push origin main</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">GitHub shows your latest commit in the repository. You can see all dbt model files under <code>resource-utilization/dbt/models/</code>.</div>
+</section>
+
 <!-- STEP 0: SELF-HOSTED RUNNER -->
 <section id="step0">
   <div class="step-header"><div class="sc" style="background:#7c3aed;">0</div><h2>Set up the self-hosted runner</h2></div>
 
   <div class="callout purple"><strong>Why a self-hosted runner is required here.</strong>
     GitHub Actions has two types of runners:<br><br>
-    <strong>Cloud runners</strong> (<code>runs-on: ubuntu-latest</code>) — GitHub spins up a fresh virtual machine in the cloud to run your job. Fast and zero maintenance. But it cannot reach your Mac's PostgreSQL — your database lives inside Docker on your laptop, behind your home router, with no public IP address. The cloud runner has no way to connect to <code>localhost:5432</code> on your machine.<br><br>
-    <strong>Self-hosted runner</strong> (<code>runs-on: self-hosted</code>) — a small process that you run on your Mac. It registers with GitHub, listens for jobs, and executes them locally. When GitHub triggers a CI run, the job runs on your Mac where it can reach <code>localhost:5432</code> directly — no VPN, no tunnel, no firewall issues.<br><br>
-    This is the standard solution for teams whose database is not publicly accessible: run the GitHub Actions runner on a machine that <em>can</em> reach the database.
+    <strong>Cloud runners</strong> (<code>runs-on: ubuntu-latest</code>) — GitHub spins up a fresh VM in the cloud. Fast and zero maintenance. But it cannot reach your Mac's PostgreSQL — your database lives inside Docker on your laptop with no public IP. The cloud runner has no way to connect to <code>localhost:5432</code>.<br><br>
+    <strong>Self-hosted runner</strong> (<code>runs-on: self-hosted</code>) — a small process you run on your Mac. It registers with GitHub, listens for jobs, and executes them locally where it can reach <code>localhost:5432</code> directly.<br><br>
+    This is the standard solution for teams whose database is not publicly accessible.
   </div>
 
-  <h3>Step 1 — Register the runner with GitHub</h3>
-  <ol>
-    <li>Open your repository on GitHub</li>
-    <li>Go to <strong>Settings → Actions → Runners → New self-hosted runner</strong></li>
-    <li>Select <strong>macOS</strong> and <strong>ARM64</strong> (Apple Silicon) or <strong>X64</strong> (Intel)</li>
-    <li>GitHub will show you a set of commands — follow them exactly. They look like this:</li>
-  </ol>
+  <h3>Step 1 — Install GitHub CLI and verify authentication</h3>
+  <p>We use the GitHub CLI (<code>gh</code>) to register the runner and set secrets from the terminal — no clicking in the UI required.</p>
 
-  <div class="code-wrap"><pre><code># Create a folder for the runner (GitHub will show the exact URL for your repo)
-mkdir actions-runner && cd actions-runner
+  <div class="code-wrap"><pre><code>brew install gh
+gh auth status</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-# Download the runner package (use the URL GitHub gives you — do not copy this one)
-curl -o actions-runner-osx-arm64.tar.gz -L https://github.com/actions/runner/releases/download/v2.x.x/actions-runner-osx-arm64-2.x.x.tar.gz
+  <div class="checkpoint">You see <code>Logged in to github.com</code> and your username. Token scopes must include <code>repo</code> and <code>workflow</code>. If not — run <code>gh auth login</code> and re-authenticate.</div>
+
+  <h3>Step 2 — Get a runner registration token</h3>
+
+  <div class="code-wrap"><pre><code>gh api --method POST repos/YOUR-USERNAME/btg-case-studies/actions/runners/registration-token \
+  --jq .token</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Copy the token — it expires in one hour.</p>
+
+  <div class="callout warning"><strong>Replace YOUR-USERNAME with your actual GitHub username.</strong>
+    For example: <code>repos/kanjasaha/btg-case-studies/...</code>
+  </div>
+
+  <h3>Step 3 — Download and configure the runner</h3>
+
+  <div class="code-wrap"><pre><code># Create the runner folder
+mkdir ~/actions-runner && cd ~/actions-runner
+
+# Download — Apple Silicon (ARM64)
+curl -o actions-runner-osx-arm64.tar.gz -L \
+  https://github.com/actions/runner/releases/download/v2.322.0/actions-runner-osx-arm64-2.322.0.tar.gz
 
 # Extract
 tar xzf ./actions-runner-osx-arm64.tar.gz
 
-# Configure — GitHub will give you the exact token for your repo
-./config.sh --url https://github.com/YOUR-ORG/YOUR-REPO --token YOUR-TOKEN</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+# Configure — replace TOKEN with the token from Step 2
+./config.sh --url https://github.com/YOUR-USERNAME/btg-case-studies --token TOKEN</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="callout info"><strong>Use the exact commands GitHub shows you.</strong>
-    The token GitHub generates is unique to your repo and expires after one hour. Copy and run the commands directly from the GitHub UI — do not use the example above verbatim.
-  </div>
+  <div class="callout info"><strong>Intel Mac?</strong> Replace <code>arm64</code> with <code>x64</code> in the download URL.</div>
 
-  <h3>Step 2 — Start the runner</h3>
-  <p>Open a terminal and run:</p>
+  <p><code>config.sh</code> will ask three questions — press Enter to accept defaults for all:</p>
+  <div class="code-wrap"><pre class="output"><code>Enter the name of the runner group: [press Enter for Default]
+Enter the name of runner: [press Enter for mac]
+Enter any additional labels: [press Enter to skip]
+
+√ Runner successfully added
+√ Runner connection is good
+
+Enter name of work folder: [press Enter for _work]
+√ Settings Saved.</code></pre></div>
+
+  <h3>Step 4 — Start the runner</h3>
+  <p>Open a <strong>dedicated terminal tab</strong> and run:</p>
+
   <div class="code-wrap"><pre><code>cd ~/actions-runner
 ./run.sh</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="callout warning"><strong>Leave this terminal open while you are working.</strong>
-    The runner only accepts jobs while <code>./run.sh</code> is running. If you close the terminal or put your Mac to sleep, the runner goes offline and GitHub Actions jobs will queue and wait. Keep it running in a dedicated terminal tab while you are developing.<br><br>
-    You will see output like: <code>Listening for Jobs</code> — this confirms the runner is connected to GitHub and ready.
+  <div class="callout warning"><strong>Leave this terminal open the entire time you are working.</strong>
+    The runner only accepts jobs while <code>./run.sh</code> is running. Every other command in this runbook must be run in a different terminal tab. If you close this tab or your Mac sleeps, the runner goes offline and GitHub Actions jobs will queue and wait.<br><br>
+    You will see: <code>Listening for Jobs</code> — this confirms the runner is ready.
   </div>
 
-  <div class="checkpoint">On GitHub → Settings → Actions → Runners, your Mac appears with a green dot and status <strong>Idle</strong>.</div>
+  <div class="checkpoint">On GitHub → Settings → Actions → Runners, your Mac appears with a green dot and status <strong>Idle</strong>. In the terminal: <code>Listening for Jobs</code>.</div>
 
-  <h3>Step 3 — Verify the runner can reach PostgreSQL</h3>
-  <p>Before adding workflow files, confirm the runner's environment can connect to your database:</p>
-  <div class="code-wrap"><pre><code># In a NEW terminal (not the one running ./run.sh)
-psql -h localhost -p 5432 -U airflow -d btg_resource_utilization -c "SELECT 1;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-  <div class="checkpoint">Returns <code>?column? = 1</code>. If this works from your terminal, it will work from the self-hosted runner — they both run on your Mac.</div>
+  <h3>Step 5 — Commit the CI-safe profiles.yml</h3>
 
-  <h3>Step 4 — Add profiles.yml to the repo for CI</h3>
-  <p>The self-hosted runner runs dbt using the <code>profiles.yml</code> from your repo. You need a CI-safe version checked in. Create it at <code>dbt/profiles.yml</code> — it reads credentials from environment variables injected by GitHub Secrets (set up in Step 2):</p>
+  <p>The self-hosted runner runs dbt inside Docker using a <code>profiles.yml</code> from your repo. This is different from your personal <code>profiles.yml</code> — it contains no real passwords, only <code>env_var()</code> references that are filled in at runtime from GitHub Secrets.</p>
 
-  <div class="code-wrap"><pre class="yaml"><code># dbt/profiles.yml
-# This file is used by the self-hosted runner for CI and prod workflows.
-# Credentials come from GitHub Secrets — never hardcoded here.
-# Your personal target uses ~/.dbt/profiles.yml (not this file) — keep that gitignored.
-
-resource_utilization:
-  target: personal
-  outputs:
-
-    personal:
-      type: postgres
-      host: localhost
-      port: 5432
-      user: airflow
-      password: airflow
-      dbname: btg_resource_utilization
-      schema: dbt_yourname_staging_silver
-      threads: 4
-
-    ci:
-      type: postgres
-      host: "{{ env_var('DBT_HOST', 'localhost') }}"
-      port: "{{ env_var('DBT_PORT', '5432') | int }}"
-      user: "{{ env_var('DBT_USER', 'airflow') }}"
-      password: "{{ env_var('DBT_PASSWORD', 'airflow') }}"
-      dbname: "{{ env_var('DBT_DBNAME', 'btg_resource_utilization') }}"
-      schema: dbt_ci_staging_silver
-      threads: 4
-
-    dev:
-      type: postgres
-      host: "{{ env_var('DBT_HOST', 'localhost') }}"
-      port: "{{ env_var('DBT_PORT', '5432') | int }}"
-      user: "{{ env_var('DBT_USER', 'airflow') }}"
-      password: "{{ env_var('DBT_PASSWORD', 'airflow') }}"
-      dbname: "{{ env_var('DBT_DBNAME', 'btg_resource_utilization') }}"
-      schema: dev_staging_silver
-      threads: 4
-
-    prod:
-      type: postgres
-      host: "{{ env_var('DBT_HOST', 'localhost') }}"
-      port: "{{ env_var('DBT_PORT', '5432') | int }}"
-      user: "{{ env_var('DBT_USER', 'airflow') }}"
-      password: "{{ env_var('DBT_PASSWORD', 'airflow') }}"
-      dbname: "{{ env_var('DBT_DBNAME', 'btg_resource_utilization') }}"
-      schema: prod_staging_silver
-      threads: 4</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="callout info"><strong>Why localhost works here.</strong>
-    Because the self-hosted runner runs on your Mac, <code>localhost</code> in the workflow points to your Mac — which is exactly where Docker and PostgreSQL are running. The GitHub Secrets for the local stack are simply: <code>DBT_HOST=localhost</code>, <code>DBT_PORT=5432</code>, <code>DBT_USER=airflow</code>, <code>DBT_PASSWORD=airflow</code>, <code>DBT_DBNAME=btg_resource_utilization</code>.
+  <div class="callout error"><strong>Common mistake — profiles.yml blocked by .gitignore.</strong>
+    The <code>resource-utilization/.gitignore</code> file blocks <code>dbt/profiles.yml</code>. The CI-safe version needs to be force-added to override this. If you skip this step, CI will fail with: <code>Could not find profile named 'resource_utilization'</code>
   </div>
 
-  <div class="callout warning"><strong>Do not gitignore this profiles.yml.</strong>
-    Unlike your personal <code>~/.dbt/profiles.yml</code> (which contains hardcoded credentials and must never be committed), this repo-level <code>dbt/profiles.yml</code> contains no real passwords — only <code>env_var()</code> references. It is safe to commit and required for CI to work.
+  <p>Confirm the file exists and force-add it:</p>
+
+  <div class="code-wrap"><pre><code># Confirm the file exists
+ls resource-utilization/dbt/profiles.yml
+
+# Force-add it (overrides the .gitignore rule)
+git add -f resource-utilization/dbt/profiles.yml
+
+# Verify it is staged
+git status resource-utilization/dbt/profiles.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">Git status shows <code>new file: resource-utilization/dbt/profiles.yml</code> under "Changes to be committed".</div>
+
+  <div class="callout info"><strong>Why is it safe to commit this profiles.yml?</strong>
+    Unlike your personal <code>profiles.yml</code> which has hardcoded passwords, this version uses <code>env_var('DBT_USER', 'mds_user')</code> — dbt reads the value from an environment variable at runtime. GitHub Secrets inject those variables. No real credentials are stored in the file itself.
   </div>
+
+  <div class="callout info"><strong>Why does the runner use Docker to run dbt?</strong>
+    The self-hosted runner runs on your Mac but dbt is not installed on your Mac directly — it is installed inside the Airflow Docker container. When the runner executes a workflow step, it runs in a plain non-interactive shell that does not load <code>~/.zshrc</code>, so the <code>dbt</code> shell function you set up in Runbook 2 is not available.<br><br>
+    The fix is to call dbt via <code>docker compose run</code> with the full path to the dbt binary inside the container: <code>/usr/local/airflow/dbt_venv/bin/dbt</code>. This is why the workflow files use <code>docker compose</code> commands instead of plain <code>dbt</code> commands.
+  </div>
+
+  <p>Commit:</p>
+  <div class="code-wrap"><pre><code>git commit -m "add CI-safe profiles.yml for GitHub Actions"
+git push origin feature/test-ci</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
 </section>
 
@@ -439,19 +478,40 @@ resource_utilization:
 <section id="step1">
   <div class="step-header"><div class="sc">1</div><h2>Set up GitHub Actions and branch protection</h2></div>
 
-  <p>GitHub Actions is already built into every GitHub repository — nothing to install. You just need to create workflow files and configure branch protection.</p>
+  <p>GitHub Actions is already built into every GitHub repository — nothing to install. You need to create the workflow folder and configure branch protection so no one can push directly to main.</p>
 
   <h3>Enable branch protection on main</h3>
 
-  <ol>
-    <li>Open your repository on GitHub</li>
-    <li>Go to <strong>Settings → Branches → Add branch protection rule</strong></li>
-    <li>Branch name pattern: <code>main</code></li>
-    <li>Check <strong>Require a pull request before merging</strong></li>
-    <li>Check <strong>Require status checks to pass before merging</strong></li>
-    <li>Check <strong>Do not allow bypassing the above settings</strong></li>
-    <li>Click <strong>Create</strong></li>
-  </ol>
+  <p>Using the GitHub CLI — faster and repeatable than clicking through the UI:</p>
+
+  <div class="code-wrap"><pre><code>gh api repos/YOUR-USERNAME/btg-case-studies/branches/main/protection \
+  --method PUT \
+  --header "Content-Type: application/json" \
+  --input - &lt;&lt;'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["dbt CI — build modified models and run tests"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}
+EOF</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What this protection does:</strong><br><br>
+    ✅ PR required before merging to main — no direct pushes<br>
+    ✅ CI must pass before the merge button activates<br>
+    ✅ Even you (admin) must go through a PR<br>
+    ❌ No human reviewer required — correct for solo work<br><br>
+    When you have a teammate, add the reviewer requirement by changing <code>"required_pull_request_reviews": null</code> to <code>"required_pull_request_reviews": {"required_approving_review_count": 1}</code>.
+  </div>
+
+  <div class="callout warning"><strong>Use <code>--input -</code> with a heredoc, not <code>--field</code>.</strong>
+    The <code>--field</code> flag sends strings. The branch protection API requires JSON objects. Using <code>--field</code> causes a <code>422 Invalid request</code> error. The heredoc approach with <code>--input -</code> sends correctly structured JSON.
+  </div>
+
+  <div class="checkpoint">The API returns a JSON response with <code>required_status_checks</code> and <code>enforce_admins</code> — no error message. Main is now protected.</div>
 
   <div class="callout info"><strong>What does branch protection do?</strong>
     It makes it physically impossible to push directly to main. Anyone who tries gets a rejection from GitHub. Every change must go through a Pull Request — which means CI runs, a reviewer sees it, and there is a permanent record of what changed and when.
@@ -463,7 +523,7 @@ mkdir -p .github/workflows
 touch .github/workflows/.gitkeep</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <div class="callout info"><strong>Where do workflow files live?</strong>
-    GitHub Actions looks for workflow files in <code>.github/workflows/</code> at the root of your repository. Any <code>.yml</code> file there is automatically picked up — no registration or configuration needed.
+    GitHub Actions looks for workflow files in <code>.github/workflows/</code> at the root of your repository. Any <code>.yml</code> file there is automatically picked up — no registration needed.
   </div>
 
 </section>
@@ -472,30 +532,33 @@ touch .github/workflows/.gitkeep</code></pre><button class="copy-btn" onclick="c
 <section id="step2">
   <div class="step-header"><div class="sc">2</div><h2>Add GitHub Secrets</h2></div>
 
-  <p>GitHub Actions needs your database credentials to run dbt. You never put passwords in code — they go in GitHub Secrets, which are encrypted and injected as environment variables at runtime.</p>
+  <p>GitHub Actions needs your database credentials to run dbt. You never put passwords in code — they go in GitHub Secrets, encrypted and injected as environment variables at runtime.</p>
 
-  <ol>
-    <li>Open your repo on GitHub → <strong>Settings → Secrets and variables → Actions</strong></li>
-    <li>Click <strong>New repository secret</strong> for each of the following:</li>
-  </ol>
+  <p>Add all five secrets in one go using the GitHub CLI:</p>
+
+  <div class="code-wrap"><pre><code>gh secret set DBT_HOST --body "localhost" --repo YOUR-USERNAME/btg-case-studies
+gh secret set DBT_PORT --body "5432" --repo YOUR-USERNAME/btg-case-studies
+gh secret set DBT_USER --body "mds_user" --repo YOUR-USERNAME/btg-case-studies
+gh secret set DBT_PASSWORD --body "mds_password" --repo YOUR-USERNAME/btg-case-studies
+gh secret set DBT_DBNAME --body "btg_resource_utilization" --repo YOUR-USERNAME/btg-case-studies</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <table>
     <thead><tr><th>Secret name</th><th>Value for this local stack</th><th>Why</th></tr></thead>
     <tbody>
-      <tr><td><code>DBT_HOST</code></td><td><code>localhost</code></td><td>The self-hosted runner runs on your Mac, so localhost hits Docker PostgreSQL directly</td></tr>
+      <tr><td><code>DBT_HOST</code></td><td><code>localhost</code></td><td>Self-hosted runner runs on your Mac — localhost hits Docker PostgreSQL directly</td></tr>
       <tr><td><code>DBT_PORT</code></td><td><code>5432</code></td><td>PostgreSQL default port, exposed by Docker</td></tr>
-      <tr><td><code>DBT_USER</code></td><td><code>airflow</code></td><td>The PostgreSQL user created in Runbook 1</td></tr>
-      <tr><td><code>DBT_PASSWORD</code></td><td><code>airflow</code></td><td>The PostgreSQL password created in Runbook 1</td></tr>
+      <tr><td><code>DBT_USER</code></td><td><code>mds_user</code></td><td>The PostgreSQL user created in Runbook 2</td></tr>
+      <tr><td><code>DBT_PASSWORD</code></td><td><code>mds_password</code></td><td>The PostgreSQL password created in Runbook 2</td></tr>
       <tr><td><code>DBT_DBNAME</code></td><td><code>btg_resource_utilization</code></td><td>Your database name</td></tr>
     </tbody>
   </table>
 
   <div class="callout info"><strong>Why localhost works with a self-hosted runner.</strong>
-    Because the self-hosted runner is a process running on your Mac, <code>localhost</code> in any workflow step resolves to your Mac — exactly where Docker and PostgreSQL are running. No VPN, no tunnel, no public IP needed. This is the entire point of the self-hosted runner: GitHub sends the job instructions to your Mac, and your Mac executes them.
+    Because the self-hosted runner is a process running on your Mac, <code>localhost</code> in any workflow step resolves to your Mac — exactly where Docker and PostgreSQL are running. No VPN, no tunnel, no public IP needed.
   </div>
 
   <div class="callout warning"><strong>Moving to a cloud database later?</strong>
-    When you move to a real cloud database (Supabase, RDS, Snowflake etc.), just update these secrets with the cloud host and credentials. You can switch to <code>runs-on: ubuntu-latest</code> at that point — cloud databases have public endpoints that GitHub's cloud runners can reach. The workflow YAML stays identical; only the secrets change.
+    Update these secrets with the cloud host and credentials. Switch to <code>runs-on: ubuntu-latest</code> — cloud databases have public endpoints that GitHub's cloud runners can reach. The workflow YAML stays identical; only the secrets change.
   </div>
 
 </section>
@@ -506,14 +569,25 @@ touch .github/workflows/.gitkeep</code></pre><button class="copy-btn" onclick="c
 
   <p>This workflow runs automatically on every Pull Request. It builds only the models you changed and runs all their tests.</p>
 
+  <div class="callout error"><strong>Critical: dbt commands must use Docker — not the shell function.</strong>
+    The self-hosted runner runs in a plain non-interactive shell that does not load <code>~/.zshrc</code>. The <code>dbt</code> shell function you set up in Runbook 2 is not available. If you use plain <code>dbt deps</code> or <code>dbt build</code> in the workflow, the runner will fail with:<br>
+    <code>line 1: dbt: command not found</code><br><br>
+    The fix is to call dbt via <code>docker compose run</code> with the full binary path: <code>/usr/local/airflow/dbt_venv/bin/dbt</code>. This is why all dbt commands in the workflow use <code>docker compose</code>.
+  </div>
+
+  <div class="callout info"><strong>Note on paths.</strong>
+    The repo root is <code>btg-case-studies/</code> and the dbt project is inside <code>resource-utilization/dbt/</code>. All paths in the workflow are relative to the repo root where the runner checks out the code.
+  </div>
+
   <div class="code-wrap"><pre><code>code .github/workflows/dbt_ci.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <p>Type this exactly, then save with <strong>⌘ + S</strong>:</p>
+  <p>Paste this exactly, then save with <strong>⌘ + S</strong>:</p>
 
   <div class="code-wrap"><pre class="yaml"><code># .github/workflows/dbt_ci.yml
 # Runs automatically on every Pull Request to dev or main.
 # Builds only modified models and runs all their tests.
 # Blocks the PR from merging if any test fails.
+# Runs on your Mac via the self-hosted runner — required to reach localhost PostgreSQL.
 
 name: dbt CI
 
@@ -523,11 +597,11 @@ on:
       - dev
       - main
     paths:
-      - 'dbt/models/**'
-      - 'dbt/tests/**'
-      - 'dbt/macros/**'
-      - 'dbt/seeds/**'
-      - 'dbt/snapshots/**'
+      - 'resource-utilization/dbt/models/**'
+      - 'resource-utilization/dbt/tests/**'
+      - 'resource-utilization/dbt/macros/**'
+      - 'resource-utilization/dbt/seeds/**'
+      - 'resource-utilization/dbt/snapshots/**'
 
 env:
   DBT_HOST: ${{ secrets.DBT_HOST }}
@@ -539,16 +613,17 @@ env:
 jobs:
   dbt-ci:
     name: dbt CI — build modified models and run tests
-    runs-on: self-hosted   # runs on your Mac — required to reach localhost PostgreSQL
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install dbt packages
-        # dbt is already installed on the self-hosted runner (your Mac)
-        # Just install project packages from packages.yml
-        run: cd dbt && dbt deps --profiles-dir .
+        run: |
+          docker compose -f resource-utilization/docker-compose.yml \
+            run --rm airflow-scheduler bash -c \
+            "cd /opt/airflow/dbt && /usr/local/airflow/dbt_venv/bin/dbt deps"
 
       - name: Download production manifest for Slim CI
         uses: actions/download-artifact@v4
@@ -556,25 +631,28 @@ jobs:
           name: dbt-manifest
           path: ./prod-state/
         continue-on-error: true
-        # First run will not have a manifest yet — that is fine.
+        # First run will not have a manifest — that is fine.
         # Without it, dbt builds everything. With it, only modified models.
 
       - name: Run Slim CI — modified models only
         run: |
-          cd dbt
-          if [ -f "../prod-state/manifest.json" ]; then
+          if [ -f "prod-state/manifest.json" ]; then
             echo "Prod manifest found — running Slim CI"
-            dbt build \
+            docker compose -f resource-utilization/docker-compose.yml \
+              run --rm airflow-scheduler bash -c \
+              "cd /opt/airflow/dbt && /usr/local/airflow/dbt_venv/bin/dbt build \
               --select state:modified+ \
               --defer \
-              --state ../prod-state/ \
+              --state /opt/airflow/prod-state/ \
               --target ci \
-              --profiles-dir .
+              --profiles-dir ."
           else
             echo "No prod manifest — running full build"
-            dbt build \
+            docker compose -f resource-utilization/docker-compose.yml \
+              run --rm airflow-scheduler bash -c \
+              "cd /opt/airflow/dbt && /usr/local/airflow/dbt_venv/bin/dbt build \
               --target ci \
-              --profiles-dir .
+              --profiles-dir ."
           fi
 
       - name: Save manifest for next CI run
@@ -582,21 +660,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dbt-manifest
-          path: dbt/target/manifest.json
+          path: resource-utilization/dbt/target/manifest.json
           retention-days: 7</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <div class="callout info"><strong>What is Slim CI?</strong>
-    The key command is <code>dbt build --select state:modified+ --defer --state ./prod-state/ --target ci</code>.<br><br>
-    <code>state:modified+</code> — only build models whose SQL actually changed in this PR, plus all their downstream dependents.<br><br>
-    <code>--defer --state ./prod-state/</code> — for any upstream model you didn't change, read from <code>prod_staging_silver</code> or <code>prod_mart_gold</code> instead of rebuilding it. The output of your changed models lands in the <code>dbt_ci</code> schema — not in prod.<br><br>
-    <code>--target ci</code> — writes results to the <code>dbt_ci_staging_silver</code> / <code>dbt_ci_mart_gold</code> schemas. This is a temporary schema — it is cleaned up after the PR closes.<br><br>
-    Result: CI only builds 2-3 models instead of the entire project. It's fast and still tests your models against real prod-scale data via defer. And because it runs on your Mac (self-hosted runner), it can reach your localhost PostgreSQL directly.
-  </div>
-
-  <div class="callout info"><strong>What tests does CI run?</strong>
-    CI runs ALL tests on every model it builds — both tests that existed before your PR and any new tests you added in your PR. This catches two things:<br><br>
-    — Did your change break something that was already working? (existing tests)<br>
-    — Does your new logic actually pass the quality checks you defined? (new tests)
+    The key command is <code>dbt build --select state:modified+ --defer --state ./prod-state/</code>.<br><br>
+    <code>state:modified+</code> — only build models whose SQL changed in this PR, plus their downstream dependents.<br><br>
+    <code>--defer --state ./prod-state/</code> — for any upstream model you didn't change, read from prod instead of rebuilding it. Output lands in the <code>dbt_ci</code> schema — not in prod.<br><br>
+    Result: CI only builds 2–3 models instead of the entire project. Fast, and still tests against real prod-scale data via defer.
   </div>
 
 </section>
@@ -605,22 +676,25 @@ jobs:
 <section id="step4">
   <div class="step-header"><div class="sc">4</div><h2>Create the production workflow</h2></div>
 
-  <p>This workflow triggers when code merges into main. It runs the full dbt build against production schemas. Airflow also runs on a schedule — this workflow handles the code-change-triggered deployment.</p>
+  <p>This workflow triggers when code merges into main. It runs the full dbt build against production schemas.</p>
 
   <div class="code-wrap"><pre><code>code .github/workflows/dbt_prod.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>Paste this exactly, then save with <strong>⌘ + S</strong>:</p>
 
   <div class="code-wrap"><pre class="yaml"><code># .github/workflows/dbt_prod.yml
 # Triggers when code merges to main.
 # Runs the full production build — all models, all tests.
 # Nobody runs this manually — GitHub triggers it on merge.
+# Uses Docker to call dbt — same reason as dbt_ci.yml.
 
 name: dbt Production
 
 on:
   push:
     branches:
-      - main       # triggers on merge to main
-  workflow_dispatch: # allows manual trigger from GitHub UI if needed
+      - main
+  workflow_dispatch:
 
 env:
   DBT_HOST: ${{ secrets.DBT_HOST }}
@@ -632,55 +706,53 @@ env:
 jobs:
   dbt-prod:
     name: dbt Production — full build and test
-    runs-on: self-hosted   # runs on your Mac — required to reach localhost PostgreSQL
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install dbt packages
-        # dbt is already installed on the self-hosted runner (your Mac)
-        run: cd dbt && dbt deps --profiles-dir .
-
-      - name: Check source freshness
         run: |
-          cd dbt
-          dbt source freshness --profiles-dir . --target prod
-        continue-on-error: true
+          docker compose -f resource-utilization/docker-compose.yml \
+            run --rm airflow-scheduler bash -c \
+            "cd /opt/airflow/dbt && /usr/local/airflow/dbt_venv/bin/dbt deps"
 
       - name: Run full production build
         run: |
-          cd dbt
-          dbt build --target prod --profiles-dir .
+          docker compose -f resource-utilization/docker-compose.yml \
+            run --rm airflow-scheduler bash -c \
+            "cd /opt/airflow/dbt && /usr/local/airflow/dbt_venv/bin/dbt build \
+            --target prod \
+            --profiles-dir ."
 
       - name: Save production manifest
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: dbt-manifest
-          path: dbt/target/manifest.json
-          retention-days: 7
-          # This manifest is used by CI on the next PR for Slim CI comparison</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+          path: resource-utilization/dbt/target/manifest.json
+          retention-days: 7</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <div class="callout info"><strong>Why does prod save the manifest?</strong>
-    After each successful production run, GitHub saves the <code>manifest.json</code> as an artifact. The next time a developer opens a Pull Request, the CI workflow downloads this manifest and uses it to determine which models changed — enabling Slim CI. This is the link between prod and CI.
+    After each successful production run, GitHub saves <code>manifest.json</code> as an artifact. The next time a developer opens a PR, the CI workflow downloads it to determine which models changed — enabling Slim CI. This is the link between prod and CI.
   </div>
 
-  <p>Commit both workflow files:</p>
+  <p>Commit both workflow files and push to dev:</p>
   <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
 git add .github/
 git commit -m "add CI and production GitHub Actions workflows"
 git push origin dev</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="checkpoint">On GitHub, under your repo's <strong>Actions</strong> tab, you see <strong>dbt CI</strong> and <strong>dbt Production</strong> listed as available workflows.</div>
+  <div class="checkpoint">On GitHub under your repo's <strong>Actions</strong> tab you see <strong>dbt CI</strong> and <strong>dbt Production</strong> listed as available workflows.</div>
 
 </section>
 
 <!-- STEP 5: FEATURE BRANCH -->
 <section id="step5">
-  <div class="step-header"><div class="sc">5</div><h2>Create your first feature branch</h2></div>
+  <div class="step-header"><div class="sc">5</div><h2>Create your first feature branch and test CI</h2></div>
 
-  <p>From this point forward you never work directly on <code>main</code> or <code>dev</code>. Every piece of work starts with a feature branch.</p>
+  <p>From this point forward you never work directly on <code>main</code> or <code>dev</code>. Every piece of work starts with a feature branch. Here we create one to test the full CI pipeline end to end.</p>
 
   <h3>The feature branch naming convention</h3>
 
@@ -693,55 +765,34 @@ git push origin dev</code></pre><button class="copy-btn" onclick="copyCode(this)
     </tbody>
   </table>
 
-  <h3>Start new work — always from dev</h3>
-  <div class="code-wrap"><pre><code># Always start from the latest dev branch
-cd ~/Documents/btg-case-studies
+  <h3>Start from dev — always</h3>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
 git checkout dev
 git pull origin dev
+git checkout -b feature/test-ci</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-# Create your feature branch
-git checkout -b feature/add-weekly-token-model
+  <h3>Make a small change to trigger CI</h3>
+  <p>Add a harmless comment to a staging model — this gives CI something to detect as modified:</p>
 
-# Confirm you are on the right branch
-git branch</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="code-wrap"><pre><code>echo "-- test ci trigger" >> resource-utilization/dbt/models/staging/stg_customer_details.sql</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="checkpoint">The asterisk (*) is next to <code>feature/add-weekly-token-model</code>. You are on your feature branch.</div>
+  <h3>Commit and push</h3>
+  <div class="code-wrap"><pre><code>git add resource-utilization/dbt/models/staging/stg_customer_details.sql
+git commit -m "test CI pipeline"
+git push origin feature/test-ci</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <h3>Work in your personal schema</h3>
+  <h3>Open a PR using the GitHub CLI</h3>
+  <div class="code-wrap"><pre><code>gh pr create \
+  --repo YOUR-USERNAME/btg-case-studies \
+  --base dev \
+  --head feature/test-ci \
+  --title "Test CI pipeline" \
+  --body "Testing the self-hosted runner and Slim CI workflow"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <p>Make your changes to dbt models. Run them in your personal schema as you develop:</p>
+  <div class="checkpoint">GitHub returns a PR URL. The runner terminal shows: <code>Running job: dbt CI — build modified models and run tests</code></div>
 
-  <div class="code-wrap"><pre><code># Build and test your specific model in your personal schema
-# (--target personal is the default, so you can omit it)
-dbt build --select token_usage_model_weekly
-
-# Once happy, simulate CI locally before opening the PR
-mkdir -p prod-state
-cp dbt/target/manifest.json prod-state/manifest.json
-
-dbt build \
-  --select state:modified+ \
-  --defer \
-  --state ./prod-state/ \
-  --target personal</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="callout success"><strong>If this passes locally, CI will almost certainly pass too.</strong>
-    CI runs the exact same command. Running it locally first saves you from waiting for GitHub Actions to tell you something you could have caught in 30 seconds on your laptop.
-  </div>
-
-  <h3>Commit your work</h3>
-  <div class="code-wrap"><pre><code>git add dbt/models/marts/token_usage_model_weekly.sql
-git add dbt/models/marts/schema.yml
-git commit -m "add weekly token usage mart model"
-git push origin feature/add-weekly-token-model</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="callout info"><strong>What makes a good commit message?</strong>
-    Short, specific, present tense. Says what changed:<br>
-    ✅ <code>"add weekly token usage mart model"</code><br>
-    ✅ <code>"fix null handling in stg_customer_details"</code><br>
-    ❌ <code>"stuff"</code><br>
-    ❌ <code>"fixed"</code><br>
-    ❌ <code>"wip"</code>
+  <div class="callout info"><strong>All subsequent terminal commands must be in a different terminal tab.</strong>
+    The <code>./run.sh</code> terminal must stay open and running. Open a new tab (⌘ + T) for everything else.
   </div>
 
 </section>
@@ -776,34 +827,53 @@ git push origin feature/add-weekly-token-model</code></pre><button class="copy-b
 <section id="step7">
   <div class="step-header"><div class="sc">7</div><h2>Watch CI run automatically</h2></div>
 
-  <p>The moment you opened the PR, GitHub Actions started running the CI workflow. You did not do anything — it just happened.</p>
+  <p>The moment you opened the PR, GitHub Actions started the CI workflow. You did not do anything — it just happened.</p>
 
   <h3>What is happening right now</h3>
 
   <ol>
-    <li>GitHub detects the PR and triggers the <code>dbt CI</code> workflow</li>
-    <li>A fresh Ubuntu machine spins up on GitHub's servers</li>
-    <li>It installs Python, dbt, and your packages</li>
+    <li>GitHub detects the PR and sends the job to your self-hosted runner</li>
+    <li>The runner on your Mac checks out the code</li>
+    <li>It runs <code>dbt deps</code> via Docker to install packages</li>
     <li>It downloads the latest production manifest (if one exists)</li>
-    <li>It runs <code>dbt build --select state:modified+ --defer --state ./prod-state/</code></li>
+    <li>It runs <code>dbt build --select state:modified+</code> via Docker</li>
     <li>Results are posted back to your PR as a status check</li>
   </ol>
 
-  <h3>Watch it in real time</h3>
-  <p>On your PR page, scroll down to see the <strong>Checks</strong> section. Click <strong>Details</strong> next to the CI check to watch the live log output. You will see dbt building your models and running tests in real time.</p>
+  <div class="callout info"><strong>Why your Mac and not GitHub's servers?</strong>
+    The self-hosted runner runs on your Mac — so it can reach <code>localhost:5432</code> directly. GitHub's cloud runners are on remote servers that cannot reach your local PostgreSQL.
+  </div>
 
-  <div class="checkpoint">The CI check shows a green ✅ and your PR shows <strong>"All checks have passed"</strong>. The merge button is now active.</div>
+  <h3>Monitor from the terminal</h3>
 
-  <div class="callout error"><strong>If CI fails</strong> — click <strong>Details</strong> to see the log. dbt will show you exactly which model failed and which test violated. Fix the issue in your local personal schema, commit the fix, and push. CI runs again automatically on the new commit.</div>
+  <div class="code-wrap"><pre><code># Check the status of the latest run
+gh run list --repo YOUR-USERNAME/btg-case-studies --limit 1
 
-  <h3>Simulating CI locally when debugging</h3>
-  <p>You don't have to wait for GitHub Actions to tell you something failed. Run CI locally:</p>
-  <div class="code-wrap"><pre><code>dbt build \
+# Check all checks on your PR
+gh pr checks 1 --repo YOUR-USERNAME/btg-case-studies</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">PR checks show: <code>All checks were successful — 1 successful</code>. The runner terminal shows: <code>Job completed with result: Succeeded</code>.</div>
+
+  <h3>If CI fails — get the logs</h3>
+
+  <div class="code-wrap"><pre><code># See the failed log output
+gh run view --repo YOUR-USERNAME/btg-case-studies --log-failed</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout warning"><strong>Common CI failures and fixes:</strong><br><br>
+    <strong><code>dbt: command not found</code></strong> — The workflow is using plain <code>dbt</code> instead of <code>docker compose run</code>. The self-hosted runner's shell doesn't load <code>~/.zshrc</code> so the dbt shell function isn't available. Fix: use the full Docker command as shown in Step 3.<br><br>
+    <strong><code>Could not find profile named 'resource_utilization'</code></strong> — The <code>profiles.yml</code> was not committed. It's blocked by <code>resource-utilization/.gitignore</code>. Fix: <code>git add -f resource-utilization/dbt/profiles.yml</code> and push.<br><br>
+    <strong><code>POSTGRES_USER variable is not set</code></strong> — Docker is reading from <code>.env</code> which is gitignored and not present in the runner's working directory. These warnings are harmless — the actual credentials come from GitHub Secrets injected as environment variables, not from <code>.env</code>.
+  </div>
+
+  <h3>Simulating CI locally before pushing</h3>
+  <p>Run the exact same command CI runs — catch failures before they hit GitHub:</p>
+  <div class="code-wrap"><pre><code>cd resource-utilization/dbt
+dbt build \
   --select state:modified+ \
   --defer \
-  --state ./prod-state/ \
-  --target personal</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-  <p>Same command, same result — but on your laptop in seconds instead of waiting for GitHub.</p>
+  --state ../../prod-state/ \
+  --target ci \
+  --profiles-dir .</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
 </section>
 
@@ -813,45 +883,45 @@ git push origin feature/add-weekly-token-model</code></pre><button class="copy-b
 
   <h3>Merge feature branch → dev</h3>
 
-  <p>CI passed. A teammate reviewed and approved. Now merge:</p>
+  <p>CI passed. Now merge the PR using the GitHub CLI:</p>
 
-  <ol>
-    <li>On the PR page, click <strong>Merge pull request</strong> → <strong>Confirm merge</strong></li>
-    <li>GitHub merges your feature branch into dev</li>
-    <li>GitHub Actions detects the merge to dev and automatically runs the dev build</li>
-    <li>Your model now exists in the dev schemas (<code>dev_staging_silver</code>, <code>dev_mart_gold</code>)</li>
-  </ol>
+  <div class="code-wrap"><pre><code>gh pr merge 1 \
+  --repo YOUR-USERNAME/btg-case-studies \
+  --squash \
+  --delete-branch</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="callout info"><strong>What happens in dev after the merge?</strong>
-    The dev GitHub Actions workflow runs <code>dbt build --target dev</code> — a full build of all models into the dev schemas. This is the integration check: does your model work alongside everyone else's models that have already merged to dev? This is the step that catches conflicts between developers' work.
+  <div class="callout info"><strong>What is squash merge?</strong>
+    <code>--squash</code> combines all commits from your feature branch into a single clean commit on dev. Instead of seeing every "WIP" and "fix typo" commit in the dev history, you get one meaningful commit per feature. This keeps the git log readable.
   </div>
 
-  <p>After merging, delete the feature branch — it has served its purpose:</p>
-  <div class="code-wrap"><pre><code>git checkout dev
-git pull origin dev
-git branch -d feature/add-weekly-token-model</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="callout info"><strong>What happens in dev after the merge?</strong>
+    The dev GitHub Actions workflow triggers and runs <code>dbt build --target dev</code> — a full build of all models into the dev schemas. This is the integration check: does your model work alongside everyone else's models? This catches conflicts between developers' work before anything reaches production.
+  </div>
 
-  <h3>Release: merge dev → main</h3>
+  <h3>Release: merge dev → main using the GitHub CLI</h3>
 
-  <p>When the team is ready to release (could be daily, weekly, or after several features accumulate in dev), a release manager opens a PR from dev to main:</p>
+  <p>When the team is ready to release, open a PR from dev to main:</p>
 
-  <ol>
-    <li>Go to GitHub → <strong>Pull requests → New pull request</strong></li>
-    <li>Base: <code>main</code>, Compare: <code>dev</code></li>
-    <li>Title: <code>Release — week of [date]</code></li>
-    <li>Describe what is in this release (all features merged to dev since last release)</li>
-    <li>CI runs one more time against the combined dev changes</li>
-    <li>Senior developer reviews and approves</li>
-    <li>Merge</li>
-  </ol>
+  <div class="code-wrap"><pre><code>gh pr create \
+  --repo YOUR-USERNAME/btg-case-studies \
+  --base main \
+  --head dev \
+  --title "Release — $(date +%Y-%m-%d)" \
+  --body "Full release — all features merged to dev since last release"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <p>CI runs one more time. Once it passes and a reviewer approves, merge:</p>
+
+  <div class="code-wrap"><pre><code>gh pr merge 2 \
+  --repo YOUR-USERNAME/btg-case-studies \
+  --squash</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <div class="callout info"><strong>What happens the moment you merge to main?</strong>
-    The production GitHub Actions workflow triggers automatically. It runs <code>dbt build --target prod</code> — rebuilding all models in the prod schemas. Airflow will also pick up the changes on its next scheduled run if the GitHub Actions run is faster than the schedule.<br><br>
-    From that point on, <code>prod_mart_gold</code> contains your new weekly token usage model. Metabase will see it immediately.
+    The production GitHub Actions workflow triggers automatically. It runs <code>dbt build --target prod</code> — rebuilding all models in the prod schemas. Airflow will also pick up the changes on its next scheduled run.<br><br>
+    From that point, <code>prod_mart_gold</code> has your new model. Metabase sees it immediately.
   </div>
 
   <div class="callout success"><strong>You just shipped a data model to production without touching a single prod command.</strong>
-    You wrote the model, tested it locally, opened a PR, passed CI, got a review, and merged. Everything else happened automatically. This is how professional data teams work.
+    You wrote the model, tested locally, opened a PR, passed CI, got a review, and merged. Everything else happened automatically.
   </div>
 
 </section>
@@ -929,8 +999,14 @@ git push origin fix/bob-null-tokens
   <div class="trouble-item">
     <div class="trouble-q" onclick="t(this)">CI fails with "could not connect to server" <span class="arr">▼</span></div>
     <div class="trouble-a">
-      <p>Expected in this tutorial — GitHub Actions cannot reach your Mac's PostgreSQL. This is the localhost limitation described in Step 2. The workflow itself is correct. To fix for real: migrate to a cloud database (Supabase free tier, or Neon) and update the GitHub Secrets with the cloud connection details.</p>
-      <p>To verify your CI command is correct locally: <code>dbt build --select state:modified+ --defer --state ./prod-state/ --target personal</code></p>
+      <p>The self-hosted runner is running but cannot reach PostgreSQL. Check:</p>
+      <ol>
+        <li>Docker is running — <code>docker compose ps</code> should show all 5 containers <code>Up</code></li>
+        <li>The runner is active — your <code>./run.sh</code> terminal must show <code>Listening for Jobs</code></li>
+        <li>The credentials in GitHub Secrets match your database — <code>DBT_USER=mds_user</code>, <code>DBT_PASSWORD=mds_password</code></li>
+        <li>The profiles.yml in the repo uses <code>host: localhost</code> for all targets (not <code>postgres</code> — that's only for inside Docker)</li>
+      </ol>
+      <p>Verify locally: <code>dbt build --select state:modified+ --defer --state ./prod-state/ --target ci --profiles-dir dbt/</code></p>
     </div>
   </div>
 
@@ -945,6 +1021,51 @@ git push origin fix/bob-null-tokens
     <div class="trouble-q" onclick="t(this)">dbt build --select state:modified+ shows "no nodes selected" <span class="arr">▼</span></div>
     <div class="trouble-a">
       <p>dbt cannot detect any changes compared to the prod manifest. This means either: (1) the manifest in <code>prod-state/</code> is from the same state as your current code, or (2) you haven't saved your model file yet. Try saving the file again and running <code>dbt compile</code> first to confirm the file is being picked up.</p>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">Push rejected — "Updates were rejected because a pushed branch tip is behind its remote" <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>You are trying to push to a branch that has commits on GitHub that you don't have locally. This happens when you make a commit on the wrong branch and then try to push. Fix it:</p>
+      <div class="code-wrap"><pre><code># Step 1 — set git pull strategy (do this once globally)
+git config --global pull.rebase false
+
+# Step 2 — make sure you are on the right branch
+git branch   # asterisk shows current branch
+
+# Step 3 — if you committed on the wrong branch, move the commit
+git checkout -b feature/rescue-branch   # create a new branch with your commit
+git push origin feature/rescue-branch
+
+# Step 4 — reset the wrong branch back to what's on GitHub
+git checkout main
+git fetch origin
+git reset --hard origin/main
+
+# Step 5 — now push your fix from the correct branch
+git checkout feature/rescue-branch
+git push origin feature/rescue-branch</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">git pull says "Need to specify how to reconcile divergent branches" <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>Git doesn't know whether to merge or rebase when pulling. Set the default once and it never asks again:</p>
+      <div class="code-wrap"><pre><code>git config --global pull.rebase false
+git pull origin main</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+    </div>
+  </div>
+
+  <div class="trouble-item">
+    <div class="trouble-q" onclick="t(this)">PR not mergeable — "base branch policy prohibits the merge" <span class="arr">▼</span></div>
+    <div class="trouble-a">
+      <p>This usually means CI hasn't passed yet. Wait for the CI check to complete — the merge button activates automatically once it goes green.</p>
+      <p>If CI passed but the merge is still blocked, check that your branch protection is set to <code>"required_pull_request_reviews": null</code> — the solo-friendly setup requires CI but no human reviewer. Verify with:</p>
+      <div class="code-wrap"><pre><code>gh api repos/YOUR-USERNAME/btg-case-studies/branches/main/protection \
+  --jq '.required_pull_request_reviews'</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>Should return <code>null</code>. If it returns a JSON object with <code>required_approving_review_count</code>, re-run the branch protection setup command from Step 1 with <code>"required_pull_request_reviews": null</code>.</p>
     </div>
   </div>
 
@@ -999,7 +1120,7 @@ git push origin dev</code></pre><button class="copy-btn" onclick="copyCode(this)
     <li>A complete modern data stack running on your Mac (Runbook 1)</li>
     <li>All four environment schemas configured and dbt connected (Runbook 2)</li>
     <li>Full bronze → silver → gold pipeline built and tested (Runbook 3)</li>
-    <li>Automated production deployment via Airflow and Cosmos (Runbook 4)</li>
+    <li>Automated production deployment via Airflow on a daily schedule (Runbook 4)</li>
     <li>Team workflow with feature branches, PRs, CI, and automated production deploys (Runbook 5)</li>
   </ul>
   <p style="margin-top:14px;">From here, the next steps are:</p>
