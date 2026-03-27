@@ -530,13 +530,20 @@ RUN pip install --no-cache-dir -r requirements.txt</code></pre><button class="co
   <div class="code-wrap"><pre><code>code airflow/requirements.txt</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <p>Type this, then save with <strong>⌘ + S</strong>:</p>
-  <div class="code-wrap"><pre><code># Cosmos — the bridge between dbt and Airflow
-# Turns every dbt model into an individual Airflow task
-astronomer-cosmos==1.13.1
-
-# Official Airflow connector for PostgreSQL
+  <div class="code-wrap"><pre><code># Official Airflow connector for PostgreSQL
 # Without this, Airflow cannot talk to a PostgreSQL database
-apache-airflow-providers-postgres</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+apache-airflow-providers-postgres
+
+# Cosmos — the bridge between dbt and Airflow
+# Turns every dbt model into an individual Airflow task for fine-grained visibility
+# Installed but NOT used yet — see Runbook 4 for why.
+# Uncomment when you are ready to use Cosmos:
+# astronomer-cosmos==1.13.1</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Why is Cosmos commented out?</strong>
+    Cosmos is a powerful tool — it gives you one Airflow task per dbt model, full dependency graphs, and task-level retry. But it introduces complexity that isn't worth it at small scale: it breaks dbt's natural test ordering, requires manifest management, and adds configuration overhead.<br><br>
+    We install it now so the Docker image is ready if you ever want to enable it. Runbook 4 explains the tradeoffs in detail and shows you exactly what the Cosmos version looks like. For now, plain <code>dbt build</code> inside a <code>BashOperator</code> is simpler, more robust, and correct.
+  </div>
 </section>
 
 <!-- STEP 11 -->
@@ -757,6 +764,20 @@ postgres                Up   0.0.0.0:5432->5432/tcp</code></pre></div>
     Replace <code>airflow-webserver</code> with whichever service name failed. The last few log lines almost always say exactly what went wrong.
   </div>
 
+  <h3>Verify Cosmos and dbt are installed inside Airflow</h3>
+
+  <p><code>docker compose ps</code> tells you the container is running — but not what is installed inside it. Cosmos and dbt are Python packages installed during the Docker build. Verify them now so you do not hit a surprise in Runbook 4:</p>
+
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler python -c "import cosmos; print(cosmos.__version__)"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="checkpoint">You see <code>1.13.1</code> (or similar). Warnings about urllib3 or Airflow 3 are normal — ignore them. If you see <code>ModuleNotFoundError</code> — the Docker build failed to install Cosmos. Run <code>docker compose build --no-cache</code> and restart the stack.</div>
+
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler ls /usr/local/airflow/dbt_venv/bin/dbt</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="checkpoint">You see <code>/usr/local/airflow/dbt_venv/bin/dbt</code>. If you see "No such file" — the dbt virtual environment was not created during the build. Run <code>docker compose build --no-cache</code> and restart.</div>
+
+  <div class="callout info"><strong>Why verify these separately from docker compose ps?</strong>
+    A container can be <code>Up</code> but have a broken Python environment inside. <code>docker compose ps</code> only checks if the process is running — it has no visibility into what packages are installed. These two commands confirm the exact things Runbook 4 depends on before you spend time setting up DAGs that will never run.
+  </div>
+
   <h3>Create the Metabase database</h3>
 
   <p>Metabase stores its settings in a separate PostgreSQL database called <code>metabase</code>. PostgreSQL does not create this automatically — we create it manually once:</p>
@@ -946,36 +967,41 @@ git config --global user.email "<a href="/cdn-cgi/l/email-protection" class="__c
   <p>In a real data engineering team, code travels through four environments before reaching end users. Each one serves a different purpose:</p>
 
   <table>
-    <thead><tr><th>Environment</th><th>Where it runs</th><th>Who controls it</th><th>Purpose</th></tr></thead>
+    <thead><tr><th>Environment</th><th>Where it runs</th><th>Who controls it</th><th>Data</th><th>Purpose</th></tr></thead>
     <tbody>
       <tr>
         <td><strong>Personal</strong> 👈 you are here</td>
-        <td>Your Mac (Docker)</td>
+        <td>Your Mac (Docker) — schemas <code>dbt_yourname_staging_silver</code> and <code>dbt_yourname_mart_gold</code></td>
         <td>You alone</td>
-        <td>Write and test your models. Break things freely. Nobody sees this.</td>
+        <td>Reads from <code>raw_bronze</code> on your Mac. Full local data.</td>
+        <td>Write and test your models. Break things freely. Nobody else sees this.</td>
       </tr>
       <tr>
         <td><strong>Dev</strong></td>
-        <td>Shared database schemas</td>
-        <td>The whole team</td>
-        <td>Check that your work plays nicely with your teammates' work. Full bronze data, full project build.</td>
+        <td>Shared schemas — <code>dev_staging_silver</code> and <code>dev_mart_gold</code></td>
+        <td>The whole team (GitHub Actions writes here on merge to dev branch)</td>
+        <td>Sampled data — last 90 days or 10% of rows, refreshed daily. Fast and cheap to rebuild.</td>
+        <td>Integration check — confirms your models work with the team's code. Not full prod scale, but real data shapes.</td>
       </tr>
       <tr>
         <td><strong>CI (Continuous Integration)</strong></td>
-        <td>Automated — GitHub Actions</td>
-        <td>Nobody — it's automatic</td>
-        <td>Robot runs your tests every time you open a Pull Request. Blocks bad code from reaching production.</td>
+        <td>Your Mac — via GitHub Actions self-hosted runner. Writes to <code>dbt_ci</code> schema.</td>
+        <td>Nobody — fires automatically on every Pull Request</td>
+        <td>Same sampled dev data. Uses <code>--defer</code> so unchanged upstream models are read from prod, not rebuilt.</td>
+        <td>Blocks bad code from merging. Runs only changed models and all their tests. Fast — typically under 2 minutes.</td>
       </tr>
       <tr>
         <td><strong>Production</strong></td>
-        <td>Shared database schemas</td>
-        <td>Automated — nobody manually deploys</td>
-        <td>Live, trusted data. Business users and dashboards read from here. Only clean, tested code reaches here.</td>
+        <td>Shared schemas — <code>prod_staging_silver</code> and <code>prod_mart_gold</code></td>
+        <td>Automated — Airflow scheduler. GitHub Actions triggers it on merge to main.</td>
+        <td>Full data. All rows, all history. Metabase reads from here.</td>
+        <td>Live, trusted data. Nobody runs <code>--target prod</code> manually. Ever.</td>
       </tr>
     </tbody>
   </table>
 
-  <div class="callout info"><strong>The golden rule:</strong> Humans push code to branches. Automation pushes to production. You will never type a command that deploys to production — GitHub Actions does that for you automatically when your Pull Request is approved and merged.</div>
+  <div class="callout info"><strong>The golden rule:</strong> Humans push code to branches. Automation pushes to production. You will never type a command that deploys to production — GitHub Actions does that for you automatically when your Pull Request is approved and merged.<br><br>
+    <strong>Why a self-hosted runner?</strong> GitHub's cloud runners can't reach your Mac's PostgreSQL — it's behind your router with no public IP. The self-hosted runner is a small process you run on your Mac (<code>./run.sh</code>) that listens for jobs from GitHub and executes them locally, where it can connect to <code>localhost:5432</code> directly. This is set up in Runbook 5.</div>
 
   <h3>How this all fits in one PostgreSQL instance</h3>
 

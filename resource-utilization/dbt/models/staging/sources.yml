@@ -1,0 +1,231 @@
+version: 2
+
+sources:
+  - name: raw_bronze
+    schema: raw_bronze
+    description: "Bronze layer — raw ingested data from source systems"
+    
+    # Set default freshness for all tables in this source
+    freshness:
+      warn_after: {count: 2, period: day}
+      error_after: {count: 3, period: day}
+    
+    # Default loaded_at column for freshness checks
+    loaded_at_field: loaded_at
+    
+    tables:
+
+      # -------------------------------------------------------------------------
+      # Customer
+      # -------------------------------------------------------------------------
+      - name: customer_details
+        description: "Customer and account information from CRM systems"
+        freshness:
+          warn_after: {count: 30, period: day}
+          error_after: {count: 60, period: day}
+        columns:
+          - name: account_id
+            description: "Unique account identifier"
+            tests:
+              - not_null
+              - unique
+          - name: company_id
+            description: "Parent company identifier"
+            tests:
+              - not_null
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      # -------------------------------------------------------------------------
+      # Inference Usage
+      # -------------------------------------------------------------------------
+      - name: inference_user_token_usage_open_source
+        description: "Token usage events for open source model inference"
+        freshness:
+          warn_after: {count: 2, period: hour}
+          error_after: {count: 4, period: hour}
+        columns:
+          - name: request_id
+            description: "Unique request identifier"
+            tests:
+              - not_null
+              - unique
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      - name: inference_user_token_usage_proprietary
+        description: "Token usage events for proprietary model inference"
+        freshness:
+          warn_after: {count: 2, period: hour}
+          error_after: {count: 4, period: hour}
+        columns:
+          - name: request_id
+            description: "Unique request identifier"
+            tests:
+              - not_null
+              - unique
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      # -------------------------------------------------------------------------
+      # Resource & Infrastructure
+      # -------------------------------------------------------------------------
+      - name: resource_model_utilization
+        description: "Pod-level utilization snapshots"
+        freshness:
+          warn_after: {count: 6, period: hour}
+          error_after: {count: 12, period: hour}
+        columns:
+          - name: pod_id
+            description: "Unique pod identifier"
+            tests:
+              - not_null
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      - name: resource_accelerator_inventory
+        description: "Daily accelerator inventory snapshots per ODCR"
+        freshness:
+          warn_after: {count: 1, period: day}
+          error_after: {count: 2, period: day}
+        columns:
+          - name: odcr
+            description: "On-Demand Capacity Reservation ID"
+            tests:
+              - not_null
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      - name: resource_model_instance_allocation
+        description: "Daily instance allocation per model variant and region"
+        freshness:
+          warn_after: {count: 1, period: day}
+          error_after: {count: 2, period: day}
+        columns:
+          - name: model_variant
+            description: "Model variant identifier"
+            tests:
+              - not_null
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      # -------------------------------------------------------------------------
+      # Model Configuration
+      # -------------------------------------------------------------------------
+      - name: config_model_dimensions
+        description: "Model configuration and capacity metrics loaded from JSON"
+        freshness:
+          warn_after: {count: 30, period: day}
+          error_after: {count: 60, period: day}
+        columns:
+          - name: model_variant
+            description: "Unique model variant identifier"
+            tests:
+              - not_null
+          - name: snapshot_date
+            description: "Date this configuration snapshot was taken"
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      - name: config_model_region_availability
+        description: "Model regional availability and deployment status"
+        freshness:
+          warn_after: {count: 30, period: day}
+          error_after: {count: 60, period: day}
+        columns:
+          - name: model_variant
+            description: "Model variant identifier"
+            tests:
+              - not_null
+          - name: source_region
+            description: "AWS region where model is available"
+            tests:
+              - not_null
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      # -------------------------------------------------------------------------
+      # Quota & Rate Limits
+      # -------------------------------------------------------------------------
+      - name: quota_default_rate_limits
+        description: "Default RPM, TPM, TPD limits applied to all customers without adjustments"
+        freshness:
+          warn_after: {count: 30, period: day}
+          error_after: {count: 60, period: day}
+        columns:
+          - name: model_variant
+            description: "Model variant identifier"
+            tests:
+              - not_null
+          - name: inference_scope
+            description: "Inference routing scope: global, regional, multi-region"
+          - name: source_region
+            description: "Region these limits apply to"
+          - name: snapshot_date
+            description: "Date this limit snapshot was taken"
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      - name: quota_customer_rate_limit_adjustments
+        description: "Per-customer rate limit adjustments — overrides of default limits"
+        freshness:
+          warn_after: {count: 1, period: day}
+          error_after: {count: 2, period: day}
+        columns:
+          - name: account_id
+            description: "Customer account identifier"
+            tests:
+              - not_null
+          - name: model_variant
+            description: "Model variant identifier"
+            tests:
+              - not_null
+          - name: source_region
+            description: "Region these limits apply to"
+          - name: snapshot_date
+            description: "Date this adjustment snapshot was taken"
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      # -------------------------------------------------------------------------
+      # Revenue
+      # -------------------------------------------------------------------------
+      - name: revenue_account_daily
+        description: "Daily revenue at account + model + region grain with token-level breakdown"
+        freshness:
+          warn_after: {count: 1, period: day}
+          error_after: {count: 2, period: day}
+        columns:
+          - name: account_id
+            description: "Customer account identifier"
+            tests:
+              - not_null
+          - name: product_sku
+            description: "Product catalog ID"
+          - name: model_variant
+            description: "Model variant identifier"
+            tests:
+              - not_null
+          - name: revenue_date
+            description: "Date revenue was recognised"
+            tests:
+              - not_null
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"
+
+      - name: quota_customer_rate_limit_requests
+        description: "Customer requests to change rate limits — pending, approved, rejected, cancelled"
+        freshness:
+          warn_after: {count: 1, period: day}
+          error_after: {count: 2, period: day}
+        columns:
+          - name: account_id
+            description: "Customer account identifier"
+            tests:
+              - not_null
+          - name: create_datetime
+            description: "When the request was created"
+          - name: status
+            description: "Request status: pending, approved, rejected, cancelled"
+          - name: loaded_at
+            description: "Timestamp when record was loaded into bronze"

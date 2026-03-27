@@ -102,6 +102,32 @@
   Complete <strong>RUNBOOK_dbt_v2.html</strong> first. Your stack must be running, all bronze data loaded, dbt connected (<code>dbt debug</code> shows <code>All checks passed</code>), and packages installed (<code>dbt deps</code> completed).
 </div>
 
+<section id="preflight" style="margin-bottom:32px;">
+  <div class="step-header">
+    <div class="sc" style="background:#991b1b;font-size:13px;">!</div>
+    <h2>Pre-flight check — run this before any dbt command</h2>
+  </div>
+
+  <p>Every dbt command in this runbook writes to schemas named after you. If <code>profiles.yml</code> still has the placeholder <code>yourname</code>, dbt creates schemas called <code>dbt_yourname_staging_silver</code> and <code>dbt_yourname_mart_gold</code> — requiring painful manual cleanup. Three checks, thirty seconds.</p>
+
+  <div class="callout error"><strong>Check 1 — yourname is replaced:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>grep "yourname" dbt/profiles.yml</code></pre></div>
+    This must return nothing. If you see any output — open <code>dbt/profiles.yml</code>, change <code>schema: dbt_yourname</code> to your actual first name in lowercase (e.g. <code>schema: dbt_alice</code>), save, and re-run until it returns nothing.
+  </div>
+
+  <div class="callout error"><strong>Check 2 — dbt shell function is active:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>type dbt</code></pre></div>
+    Must show <code>dbt is a shell function</code>. If you see a file path or <code>not found</code> — run <code>source ~/.zshrc</code> first.
+  </div>
+
+  <div class="callout error"><strong>Check 3 — stack is running:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>docker compose ps</code></pre></div>
+    All 5 containers must show <code>Up</code>. If any show <code>Exit</code> — run <code>docker compose up -d</code> and wait 30 seconds.
+  </div>
+
+  <div class="checkpoint">grep returns nothing. dbt is a shell function. All 5 containers are Up. You are clear to continue.</div>
+</section>
+
 <!-- TABLE OF CONTENTS -->
 <nav id="toc">
   <div class="toc-header">
@@ -116,7 +142,7 @@
     </div>
     <div class="toc-section">
       <div class="toc-section-label">Run the pipeline</div>
-      <a href="#step1" class="toc-link"><span class="sn">1</span>Pull latest from repo</a>
+      <a href="#step1" class="toc-link"><span class="sn">1</span>Pull latest &amp; understand the codebase</a>
       <a href="#step3" class="toc-link"><span class="sn">3</span>Run dbt seed</a>
       <a href="#step4" class="toc-link"><span class="sn">4</span>Run staging models</a>
       <a href="#step5" class="toc-link"><span class="sn">5</span>Run intermediate models</a>
@@ -240,6 +266,18 @@ code target/compiled/resource_utilization/models/staging/stg_token_usage_open_so
     So if you are only changing <code>fct_orders</code>, dbt reads upstream models from prod and only builds <code>fct_orders</code> in your personal schema. You only build what you changed.
   </div>
 
+  <div class="callout warning"><strong>Critical: --defer does not copy prod data into your schema.</strong>
+    The output of your model always lands in your personal schema (<code>dbt_yourname_mart_gold</code>). What changes is what your model <em>reads</em> as input — it reads from prod tables instead of rebuilding them first.<br><br>
+    Example — you change <code>fct_orders</code> which joins on <code>stg_customers</code>:<br>
+    — Without --defer: you must first build <code>stg_customers</code> in your personal schema, then run <code>fct_orders</code><br>
+    — With --defer: dbt reads <code>prod_staging_silver.stg_customers</code> directly, runs your changed <code>fct_orders</code> logic against it, and writes the result to <code>dbt_yourname_mart_gold.fct_orders</code><br><br>
+    Your personal schema gets one new table. It does not become a copy of prod.
+  </div>
+
+  <div class="callout info"><strong>When to use --defer against prod (the full prod dataset).</strong>
+    By default, <code>--defer</code> reads from your prod schemas — which have full data. This is useful when something looks wrong in CI or your sampled dev data, and you need to validate your model against real, full-scale data before merging. Be aware: running your model against 500M rows takes longer and costs more compute. Use it selectively — not for every run.
+  </div>
+
   <div class="callout info"><strong>What is the prod manifest?</strong>
     Every time dbt runs, it generates a file called <code>manifest.json</code> in the <code>target/</code> folder. This file is a complete snapshot of every model, test, and source in your project — including which schemas they live in.<br><br>
     For <code>--defer</code> to work, you need a copy of the prod manifest so dbt knows where to find prod tables. Save it to a folder called <code>prod-state/</code>:
@@ -278,7 +316,7 @@ cp target/manifest.json prod-state/manifest.json</code></pre><button class="copy
 
 <!-- STEP 1 -->
 <section id="step1">
-  <div class="step-header"><div class="sc">1</div><h2>Pull latest from repo</h2></div>
+  <div class="step-header"><div class="sc">1</div><h2>Pull latest from repo and understand the codebase</h2></div>
 
   <div class="callout info"><strong>Before running any dbt command — confirm the shell function is active.</strong>
     The dbt shell function was set up in Runbook 2 Step 4a. If you are in a new Terminal window since then, load it:
@@ -290,7 +328,6 @@ type dbt</code></pre></div>
   <p>All models, tests, macros, and snapshots are already committed to the repo. Pull the latest before running anything:</p>
   <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
 git pull</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
   <div class="checkpoint">You see <code>Already up to date</code> or a list of files that were updated.</div>
 
   <p>Confirm all the dbt files are in the right places:</p>
@@ -299,12 +336,1038 @@ find dbt/models -name "*.sql" | sort
 find dbt/tests -name "*.sql" | sort
 find dbt/macros -name "*.sql" | sort
 find dbt/snapshots -name "*.sql" | sort</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
   <div class="checkpoint">You see 12 staging models, 2 intermediate models, 10 mart models, 8 test files, 6 macro files, and 2 snapshot files.</div>
 
   <p>Confirm your stack is running:</p>
   <div class="code-wrap"><pre><code>docker compose ps</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
   <div class="checkpoint">All 5 containers show <code>Up</code>.</div>
+
+  <h3>Establish a clean baseline before doing any work</h3>
+
+  <div class="callout info"><strong>Why run a full build after every pull?</strong>
+    Before you start any development work you need to confirm the project is healthy as it stands. If someone committed broken code to main overnight — a model that does not compile, a test that fails, a broken <code>ref()</code> — you need to know before you write a single line of SQL. Without this check you might spend an hour developing a new model only to discover at PR time that the project was already broken before you touched anything.<br><br>
+    <code>dbt build --target dev</code> runs the full project — compile, run, and test — against the shared dev schema. If it passes the project is healthy and you have a clean baseline. If it fails something is broken in main and needs to be fixed before anyone starts new work.
+  </div>
+
+  <p>First ensure your packages are in sync with <code>packages.yml</code>. If someone added or updated a package since your last pull, your local <code>dbt_packages/</code> would be out of date:</p>
+  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
+dbt deps</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="checkpoint">You see <code>Installed N package(s)</code> with no errors.</div>
+
+  <p>Now run the full project build against the dev schema:</p>
+  <div class="code-wrap"><pre><code>dbt build --target dev</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What does dbt build do?</strong>
+    <code>dbt build</code> is a single command that runs three things in order:<br><br>
+    <strong>1. Compile</strong> — resolves all Jinja templates (<code>{{ ref() }}</code>, <code>{{ source() }}</code>, <code>{% if is_incremental() %}</code>) and builds the full dependency graph. Writes compiled SQL to <code>dbt/target/compiled/</code>. Nothing runs in the database yet.<br><br>
+    <strong>2. Run</strong> — executes the compiled SQL against the database. Builds views in staging, incremental tables in intermediate, tables in marts. Also runs <code>dbt seed</code> for any seed files.<br><br>
+    <strong>3. Test</strong> — runs all schema tests (not_null, unique, accepted_values) and all custom SQL tests against the models it just built. If any test fails, dbt reports which rows violated it.<br><br>
+    This is also exactly what CI runs on every Pull Request and what Airflow runs in production — the only differences are the target (<code>ci</code> or <code>prod</code>) and the model selector (<code>state:modified+</code> for CI, no selector for full prod builds).
+  </div>
+
+  <div class="callout warning"><strong>If dbt build --target dev fails</strong> — the project has a problem in main that predates your work. Do not start developing. Check what failed, find the commit that broke it, and fix it first. Run <code>dbt build --target dev</code> again to confirm it passes before continuing.
+  </div>
+
+  <div class="checkpoint"><code>dbt build --target dev</code> completes with all models showing <code>OK</code> and all tests showing <code>PASS</code>. The dev schemas (<code>dev_staging_silver</code>, <code>dev_mart_gold</code>) are now populated with a fresh full build. You have a clean baseline — safe to start development work in your personal schema.</div>
+
+  <div class="callout info"><strong>Refreshing data without recompiling — --no-compile</strong><br><br>
+    Once you have done the baseline build and confirmed nothing has changed in the codebase, subsequent data refreshes during the same day do not need to recompile. Use the <code>--no-compile</code> flag to skip compilation and execute the already-compiled SQL directly:<br><br>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>dbt run --no-compile --target dev</code></pre></div><br>
+    dbt skips Jinja resolution and the dependency graph rebuild and goes straight to executing the SQL in <code>dbt/target/compiled/</code>.<br><br>
+    <strong>Only safe when:</strong><br>
+    — You have already done a full compile at least once (<code>target/compiled/</code> exists)<br>
+    — No code has changed since the last compile — if a teammate committed a model change, <code>--no-compile</code> would silently run the old SQL<br><br>
+    <strong>Practical pattern:</strong><br>
+    Morning pull → <code>dbt deps</code> + <code>dbt build --target dev</code> (full baseline)<br>
+    Data refresh later in the day → <code>dbt run --no-compile --target dev</code> (execute only)
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- SECTION A: MODELS                                          -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+
+  <h2 style="margin-top:40px;">Section A — Models</h2>
+
+  <div class="callout info"><strong>How the models folder is structured.</strong>
+    Every SQL file in <code>dbt/models/</code> is a model — a transformation that reads from sources or other models and writes an output. Three layers, each in its own subfolder:<br><br>
+    <code>models/staging/</code> — 12 models. Each reads from one bronze table, cleans and renames columns, writes a view.<br>
+    <code>models/intermediate/</code> — 2 models. Heavy aggregations between staging and marts. Incremental tables.<br>
+    <code>models/marts/revenue/</code> — 6 models. Business-ready revenue outputs.<br>
+    <code>models/marts/token_usage/</code> — 4 models. Business-ready token usage outputs.<br><br>
+    Two YAML files govern the entire models folder:<br>
+    <code>models/staging/sources.yml</code> — declares the bronze source tables dbt reads from.<br>
+    <code>models/staging/schema.yml</code>, <code>models/intermediate/schema.yml</code>, <code>models/marts/*/schema.yml</code> — document and test each model's output columns.<br><br>
+    <strong>What about the analyses/ folder?</strong><br>
+    dbt also has an <code>analyses/</code> folder (created by <code>dbt init</code>) for SQL queries you want to version control and compile with dbt but never materialise into the database. Any <code>.sql</code> file in <code>analyses/</code> gets Jinja compiled — <code>{{ ref() }}</code> and <code>{{ source() }}</code> resolve to real table paths — but dbt never executes it. You copy the compiled SQL from <code>target/compiled/analyses/</code> and run it manually in pgAdmin.<br><br>
+    This is useful for ad hoc exploratory queries, one-off audits, or diagnostic queries that need to reference production tables via <code>ref()</code> but should never become permanent models. This project does not use it — all SQL that produces output lives in <code>models/</code>.
+  </div>
+
+  <h3>config() parameters — full reference</h3>
+
+  <div class="callout info"><strong>What is required vs optional in config() — and what are the defaults?</strong><br><br>
+
+    No parameter is strictly required. The <code>config()</code> block itself is optional — if you omit it entirely dbt uses defaults from <code>dbt_project.yml</code> and its own built-in defaults. The <code>config()</code> block in a model file always overrides the project-level setting.<br><br>
+
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>{{
+    config(
+
+        materialized='incremental',
+        # OPTIONAL. Default: 'view'
+        # Options: 'view', 'table', 'incremental', 'ephemeral'
+        # Can be set for a whole folder in dbt_project.yml.
+        # The config() block in the file overrides the project-level setting.
+
+        unique_key=['account_id', 'revenue_date'],
+        # CONDITIONALLY REQUIRED — only when materialized='incremental'
+        # Without it dbt cannot identify which rows to replace.
+        # No default — dbt will error if incremental and unique_key is missing.
+
+        incremental_strategy='delete+insert',
+        # OPTIONAL when materialized='incremental'.
+        # Default: depends on the database adapter.
+        #   dbt-postgres  → 'merge'
+        #   dbt-snowflake → 'merge'
+        #   dbt-bigquery  → 'merge'
+        # Always set this explicitly — do not rely on adapter defaults.
+
+        on_schema_change='append_new_columns',
+        # OPTIONAL. Default: 'ignore'
+        # 'ignore'             → new columns are silently dropped — data is lost
+        # 'append_new_columns' → new columns are added to the existing table
+        # 'sync_all_columns'   → adds new columns, removes deleted columns
+        # 'fail'               → errors if schema changes at all
+        # Always set this explicitly on incremental models.
+
+        schema='mart_gold',
+        # OPTIONAL. Default: target schema from profiles.yml
+        # combined with any folder-level +schema from dbt_project.yml.
+        # Only needed to override the project-level schema setting.
+
+        alias='revenue_monthly',
+        # OPTIONAL. Default: the SQL filename without .sql
+        # e.g. token_usage_model_monthly.sql → token_usage_model_monthly
+        # Only needed if you want a different name in the database.
+
+        tags=['revenue', 'monthly', 'mart'],
+        # OPTIONAL. Default: no tags.
+        # Can also be set at folder level in dbt_project.yml.
+        # Used for: dbt run --select tag:revenue
+
+        post_hook='GRANT SELECT ON {{ this }} TO business_user',
+        # OPTIONAL. Default: no hooks.
+        # Runs after the model builds successfully.
+        # {{ this }} resolves to the full table reference e.g.
+        # prod_mart_gold.token_usage_model_monthly
+        # pre_hook runs before the model builds.
+
+        contract={'enforced': True},
+        # OPTIONAL. Default: {'enforced': False}
+        # When True, dbt compares output column names and types against
+        # schema.yml and fails the run if they do not match exactly.
+        # Requires all columns to be declared with data_type in schema.yml.
+
+        access='public'
+        # OPTIONAL. Default: 'protected'
+        # 'protected' → only models in the same project can ref() this model
+        # 'public'    → models in other dbt projects can ref() this model
+        # 'private'   → only models in the same subfolder group can ref() this
+    )
+}}</code></pre></div><br>
+
+    <strong>The three you should always set explicitly on incremental models</strong> — even though they are optional, the defaults are silent and can cause data loss:<br><br>
+    <code>unique_key</code> — required for incremental, dbt errors without it<br>
+    <code>incremental_strategy</code> — do not rely on the adapter default, be explicit<br>
+    <code>on_schema_change</code> — default is <code>'ignore'</code> which silently drops new columns
+  </div>
+
+  <h3>sources.yml — annotated</h3>
+  <p>Open <code>dbt/models/staging/sources.yml</code>. Read the inline comments:</p>
+  <div class="code-wrap"><pre><code># sources.yml tells dbt about the raw bronze tables it reads from.
+# Without this file dbt cannot build the dependency graph — it would not
+# know that stg_customer_details depends on raw_bronze.customer_details.
+# sources.yml is for tables dbt does NOT own (loaded by Airflow).
+# schema.yml is for tables dbt DOES own (models dbt creates itself).
+
+version: 2   # required header — tells dbt this file uses the current format
+
+sources:
+  - name: raw_bronze          # the group name used in {{ source('raw_bronze', ...) }} calls
+    schema: raw_bronze        # the PostgreSQL schema where these tables live
+    description: "Bronze layer — raw ingested data from source systems"
+
+    # Default freshness applied to ALL tables in this source group.
+    # dbt source freshness checks the loaded_at column and compares to now().
+    # warn_after: raises a warning but lets the run continue.
+    # error_after: fails the run entirely.
+    freshness:
+      warn_after:  {count: 2, period: day}
+      error_after: {count: 3, period: day}
+
+    # The column dbt uses to measure freshness on every table.
+    # Every bronze table has loaded_at — dbt checks this against now().
+    loaded_at_field: loaded_at
+
+    tables:
+
+      # ── customer_details ────────────────────────────────────────────────────
+      - name: customer_details
+        description: "Customer and account information from CRM systems"
+        # Override the default freshness — customer data changes rarely (monthly)
+        # so a 30-day window is appropriate. Inference data changes hourly.
+        freshness:
+          warn_after:  {count: 30, period: day}
+          error_after: {count: 60, period: day}
+        columns:
+          - name: account_id
+            description: "Unique account identifier"
+            tests:
+              - not_null   # test runs on the raw bronze table before any transformation
+              - unique     # catches duplicate account_ids in the source before they reach staging
+
+      # ── inference_user_token_usage_open_source ───────────────────────────────
+      - name: inference_user_token_usage_open_source
+        description: "Token usage events for open source model inference"
+        # Near-real-time table — warn if more than 2 hours old, error after 4.
+        # Tighter window than customer data because inference data arrives continuously.
+        freshness:
+          warn_after:  {count: 2, period: hour}
+          error_after: {count: 4, period: hour}
+        columns:
+          - name: request_id
+            tests:
+              - not_null
+              - unique   # every inference request must have a unique ID
+
+      # ── (remaining tables follow the same pattern) ────────────────────────
+      # config tables (model_dimensions, region_availability) use 30/60-day
+      # windows because they are updated manually via the Airflow config DAG.
+      # resource tables (utilization, inventory, allocation) use 1–12 hour
+      # windows because they are snapshots taken on a regular schedule.
+      # quota and revenue tables use 1–2 day windows.</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>schema.yml — annotated (staging layer)</h3>
+  <p>Open <code>dbt/models/staging/schema.yml</code>. Read the inline comments:</p>
+  <div class="code-wrap"><pre><code># schema.yml is not required — dbt discovers models from .sql files alone
+# and will run perfectly without it. However it is required by best practice
+# for three reasons:
+#
+#   1. Tests — without schema.yml no not_null, unique, or accepted_values
+#              tests run. Bad data reaches your marts silently.
+#
+#   2. Documentation — without descriptions, dbt docs generate produces
+#                      empty model pages. New team members have no way to
+#                      understand what a model does or what its columns mean.
+#
+#   3. dbt_project_evaluator — the package we installed flags models that
+#                              are missing tests or documentation as violations.
+#                              CI will fail for undertested models.
+#
+# The minimum every model should have:
+#   - a description explaining what it does and what grain it is at
+#   - unique + not_null tests on the primary key column
+#   A model with no primary key test is a data quality risk — duplicates or
+#   nulls would silently corrupt every downstream model that joins on it.
+#
+# schema.yml documents and tests the models dbt creates.
+# Unlike sources.yml (external tables dbt reads) this file covers
+# the output columns of models dbt writes.
+# Every layer has its own schema.yml: staging/, intermediate/, marts/*/
+
+version: 2
+
+models:
+
+  # ── stg_customer_details ────────────────────────────────────────────────────
+  - name: stg_customer_details   # must exactly match the SQL filename (without .sql)
+    description: "Cleaned and standardised customer account data from CRM. One row per account."
+    columns:
+
+      - name: account_id
+        tests:
+          - unique     # every customer has exactly one row in this view
+          - not_null   # account_id must always be present
+
+      - name: company_name
+        tests:
+          - not_null:
+              config:
+                severity: warn   # warn instead of fail — company_name can be blank
+                                 # in edge cases but it is not pipeline-breaking
+
+      - name: segment
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Strategic', 'Commercial', 'Unknown']
+              # accepted_values fails if any row contains a value not in this list.
+              # 'Unknown' is included because the staging model coalesces nulls to 'Unknown'.
+              # If a new segment appears in source data it will surface here before
+              # it silently breaks downstream GROUP BY queries in the mart models.
+
+      - name: account_size
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Enterprise', 'Mid-Market', 'SMB', 'Unknown']
+
+  # ── stg_token_usage_proprietary ─────────────────────────────────────────────
+  - name: stg_token_usage_proprietary
+    description: "Cleaned token usage events for proprietary models. One row per API request."
+    columns:
+      - name: request_id
+        tests:
+          - unique     # each API request must appear exactly once
+          - not_null
+      - name: model_type
+        tests:
+          - accepted_values:
+              values: ['proprietary']
+              # This model only ever contains proprietary rows.
+              # If 'open_source' appeared here it would mean the source table
+              # was populated incorrectly — this test catches that immediately.
+
+  # ── stg_config_model_dimensions ─────────────────────────────────────────────
+  - name: stg_config_model_dimensions
+    description: "Cleaned model configuration and capacity metrics."
+    columns:
+      - name: inference_scope
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['global', 'regional', 'multi-region']
+              # Constrains the vocabulary for inference_scope across the project.
+              # intermediate and mart models filter and group on this column —
+              # an unexpected value would produce a silent extra group in reports.
+
+  # ── stg_revenue_account_daily ───────────────────────────────────────────────
+  - name: stg_revenue_account_daily
+    description: "Cleaned daily revenue at account + model + region grain."
+    columns:
+      - name: billing_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['pay-as-you-go', 'savings-plan', 'committed-use']
+              # Revenue calculation logic in int_revenue_daily branches on billing_type.
+              # An unexpected value would silently fall through and produce wrong revenue.</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>config() block — full parameter reference</h3>
+
+  <p>Every dbt model can have a <code>config()</code> block at the top that controls how dbt builds it. Here is a complete example using every available parameter, followed by all options for each one:</p>
+
+  <div class="code-wrap"><pre class="sql"><code>{{
+    config(
+        -- Controls how dbt materialises this model in the database
+        materialized='incremental',
+
+        -- The column(s) that uniquely identify one row.
+        -- dbt uses this to find and replace existing rows on each run.
+        -- Single column or composite key (list).
+        unique_key=['account_id', 'revenue_date'],
+
+        -- How dbt handles existing rows when new data arrives.
+        incremental_strategy='delete+insert',
+
+        -- What dbt does if you add or remove a column from the model.
+        on_schema_change='append_new_columns',
+
+        -- Override the schema from dbt_project.yml for this model only.
+        schema='mart_gold',
+
+        -- Override the table/view name (default = the SQL filename).
+        alias='revenue_monthly',
+
+        -- Labels for filtering: dbt run --select tag:revenue
+        tags=['revenue', 'monthly', 'mart'],
+
+        -- SQL to run after the model builds.
+        -- {{ this }} resolves to the fully qualified table name.
+        -- Used here to grant read access to the business_user role.
+        post_hook='GRANT SELECT ON {{ this }} TO business_user',
+
+        -- Enforce that output column names and types match schema.yml exactly.
+        -- Fails the run if there is a mismatch — prevents silent breaking changes.
+        contract={'enforced': True},
+
+        -- Controls whether other dbt projects can ref() this model.
+        access='public'
+    )
+}}</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>All available options for each parameter</strong><br><br>
+
+    <strong>materialized</strong><br>
+    <code>'view'</code> — default. Recreated as a SQL view on every run. No data stored — the query runs on demand. Used for staging models.<br>
+    <code>'table'</code> — dropped and rebuilt from scratch on every run. All data reprocessed every time. Used when full rebuilds are acceptable.<br>
+    <code>'incremental'</code> — builds a persistent table. On first run processes all data. On subsequent runs only processes new or changed rows. Used for large tables where full rebuilds are too slow.<br>
+    <code>'ephemeral'</code> — never written to the database. Inlined as a CTE into any model that refs it. Useful for intermediate logic you want to reuse without creating a table.<br><br>
+
+    <strong>unique_key</strong> (incremental only)<br>
+    <code>'account_id'</code> — single column string<br>
+    <code>['account_id', 'revenue_date']</code> — composite key as a list. The combination of these columns identifies one unique row. dbt uses this to find existing rows to delete before reinserting.<br><br>
+
+    <strong>incremental_strategy</strong> (incremental only)<br>
+    <code>'delete+insert'</code> — deletes existing rows matching the unique_key, then reinserts. Handles late-arriving corrections correctly. Default for PostgreSQL.<br>
+    <code>'merge'</code> — upsert: updates existing rows if they match, inserts if they do not. More efficient than delete+insert when updates are rare.<br>
+    <code>'append'</code> — insert only, no deduplication. Fastest but can create duplicate rows if the same data arrives twice. Safe only when source data is guaranteed unique.<br><br>
+
+    <strong>on_schema_change</strong> (incremental only)<br>
+    <code>'ignore'</code> — default. New or removed columns are silently ignored. The existing table structure is unchanged.<br>
+    <code>'append_new_columns'</code> — adds new columns to the existing table. Removed columns are left in place. Safe for additive changes.<br>
+    <code>'sync_all_columns'</code> — adds new columns and removes deleted ones. Keeps the table in sync with the model exactly.<br>
+    <code>'fail'</code> — errors immediately if the schema changes at all. Use when you want to force explicit migrations.<br><br>
+
+    <strong>schema</strong><br>
+    Overrides the schema set in <code>dbt_project.yml</code> for this model only. Combined with the target prefix the model writes to <code>dbt_yourname_mart_gold</code> in personal and <code>prod_mart_gold</code> in prod.<br><br>
+
+    <strong>alias</strong><br>
+    Overrides the table or view name. Without this, dbt uses the SQL filename as the table name. Use when you want a cleaner name in the database than the filename.<br><br>
+
+    <strong>tags</strong><br>
+    <code>'finance'</code> — single tag as a string<br>
+    <code>['finance', 'monthly', 'mart']</code> — multiple tags as a list<br>
+    Tags are used to select groups of models: <code>dbt run --select tag:finance</code> runs only models tagged finance. Also visible in dbt docs and the Airflow UI.<br><br>
+
+    <strong>pre_hook</strong><br>
+    SQL to run before the model builds. Less common than post_hook.<br>
+    <code>pre_hook='TRUNCATE TABLE staging.temp_buffer'</code><br>
+    <code>pre_hook=['statement1', 'statement2']</code> — multiple statements as a list<br><br>
+
+    <strong>post_hook</strong><br>
+    SQL to run after the model builds successfully. Most commonly used for table-level grants — schema-level grants are set in <code>001_setup_database.sql</code> but table-level grants must run after the table exists.<br>
+    <code>post_hook='GRANT SELECT ON {{ this }} TO business_user'</code><br>
+    <code>{{ this }}</code> resolves to the fully qualified table name at compile time e.g. <code>prod_mart_gold.revenue_monthly</code>.<br>
+    <code>post_hook=['GRANT SELECT ON {{ this }} TO business_user', 'GRANT SELECT ON {{ this }} TO analytics_engineer']</code><br><br>
+
+    <strong>contract</strong><br>
+    <code>{'enforced': True}</code> — dbt checks that every column name and data type in the model output exactly matches what is declared in <code>schema.yml</code>. Fails the run if there is any mismatch. Used on public mart models to prevent silent breaking changes from reaching downstream consumers.<br>
+    <code>{'enforced': False}</code> — default. No contract checking.<br><br>
+
+    <strong>access</strong><br>
+    <code>'protected'</code> — default. Only models in the same dbt project can ref() this model.<br>
+    <code>'public'</code> — other dbt projects can ref() this model via cross-project refs.<br>
+    <code>'private'</code> — only models in the same dbt group can ref() this model. Used to enforce strict layer boundaries within a project.
+  </div>
+  <p>Open <code>dbt/models/staging/stg_customer_details.sql</code>:</p>
+  <div class="code-wrap"><pre class="sql"><code>-- stg_customer_details.sql
+-- Reads from raw_bronze.customer_details, cleans nulls, renames one column.
+-- No filtering — staging models are thin. Business filtering happens in marts.
+
+{{
+    config(
+        materialized='view'
+        -- VIEW not TABLE: staging models do not store data.
+        -- They run on demand and always reflect the latest bronze data.
+        -- Intermediate and mart models above them store aggregated results.
+    )
+}}
+
+select
+    -- Identity — passed through unchanged
+    account_id,
+    company_id,
+    company_name,
+    account_name,
+
+    -- Segmentation — coalesce nulls AND blank strings to 'Unknown'
+    -- nullif(trim(col), '') converts '  ' (blank) to null first,
+    -- then the CASE replaces null with 'Unknown'.
+    -- This handles both null and empty string in one expression.
+    -- 'Unknown' matches the accepted_values test in schema.yml.
+    case
+        when nullif(trim(account_size), '') is null then 'Unknown'
+        else account_size
+    end                                                 as account_size,
+
+    case
+        when nullif(trim(segment), '') is null then 'Unknown'
+        else segment
+    end                                                 as segment,
+
+    case
+        when nullif(trim(vertical), '') is null then 'Unknown'
+        else vertical
+    end                                                 as vertical,
+
+    -- Passed through unchanged
+    account_owner,
+
+    -- Column rename: bronze uses account_email, project standard is email.
+    -- Renaming once here means every downstream model uses email
+    -- and never sees account_email. This is the staging contract.
+    account_email                                       as email,
+
+    city,
+    country,
+    is_active,
+    cs_score,
+    is_fraud,
+    date_created,
+    date_updated,
+    data_source,
+    loaded_at
+
+-- source() references the table registered in sources.yml.
+-- dbt resolves this to raw_bronze.customer_details at compile time
+-- and records the dependency for lineage tracking.
+from {{ source('raw_bronze', 'customer_details') }}</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>Intermediate model — int_token_usage_minute.sql annotated</h3>
+  <p>Open <code>dbt/models/intermediate/int_token_usage_minute.sql</code>:</p>
+  <div class="code-wrap"><pre class="sql"><code>-- int_token_usage_minute.sql
+-- Combines open source and proprietary token usage into one table.
+-- Aggregates to minute grain per account + model + region.
+-- Every token usage mart model reads from this one — not from staging directly.
+-- Incremental: only processes new minutes on each run after the first full build.
+
+{{
+    config(
+        materialized='incremental',
+
+        -- Six columns together identify one unique row (one minute of usage
+        -- for one account, model type, source region, and inference region).
+        -- dbt uses this to find existing rows to replace on each run.
+        unique_key=['account_id', 'model_variant', 'model_type',
+                    'source_region', 'inference_region', 'minute_timestamp'],
+
+        -- delete+insert: dbt deletes existing rows matching the unique_key
+        -- and reinserts them fresh. Handles late-arriving data correctly.
+        -- Alternative strategies: merge (upsert), append (no dedup).
+        incremental_strategy='delete+insert',
+
+        -- If you add a new column to this model, dbt adds it to the existing
+        -- table instead of failing. Without this, adding a column would error.
+        on_schema_change='append_new_columns'
+    )
+}}
+
+with proprietary as (
+
+    select
+        account_id, model_variant, model_type, source_region,
+        inference_region, inference_scope, traffic_type,
+        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+        total_tokens, is_error, minute_timestamp, event_date, loaded_at
+    from {{ ref('stg_token_usage_proprietary') }}
+    -- ref() is how dbt references models it owns (vs source() for external tables).
+    -- dbt records this dependency for lineage and run ordering.
+
+    {% if is_incremental() %}
+        -- is_incremental() is false on the first run — full history is built.
+        -- On subsequent runs it is true — only process minutes newer than
+        -- the latest minute already in the table.
+        -- {{ this }} refers to the table itself (the current materialization).
+        where minute_timestamp > (select max(minute_timestamp) from {{ this }})
+    {% endif %}
+
+),
+
+open_source as (
+    -- Identical structure to proprietary — same columns, same incremental filter.
+    select
+        account_id, model_variant, model_type, source_region,
+        inference_region, inference_scope, traffic_type,
+        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+        total_tokens, is_error, minute_timestamp, event_date, loaded_at
+    from {{ ref('stg_token_usage_open_source') }}
+
+    {% if is_incremental() %}
+        where minute_timestamp > (select max(minute_timestamp) from {{ this }})
+    {% endif %}
+
+),
+
+combined as (
+    -- UNION ALL (not UNION) — keeps all rows including potential duplicates
+    -- and is faster because it skips deduplication.
+    -- The unique_key in the config handles deduplication at write time.
+    select * from proprietary
+    union all
+    select * from open_source
+),
+
+customer as (
+    -- Select only needed columns from staging — not SELECT *.
+    -- Explicit column selection prevents name collisions in the join below.
+    select account_id, company_name, segment, vertical, account_size
+    from {{ ref('stg_customer_details') }}
+),
+
+model_config as (
+    select model_variant, model_family, model_publisher
+    from {{ ref('stg_config_model_dimensions') }}
+),
+
+region_mapping as (
+    -- ref() works on seeds too — region_mapping is a dbt seed, not a model.
+    select source_region, territory, govcloud
+    from {{ ref('region_mapping') }}
+),
+
+aggregated as (
+    select
+        c.account_id,
+        -- coalesce handles LEFT JOIN misses — if an account_id exists in
+        -- token usage but not in customer_details (data quality issue),
+        -- the mart model still gets 'Unknown' instead of null.
+        coalesce(cu.company_name, 'Unknown')    as company_name,
+        coalesce(cu.segment,      'Unknown')    as segment,
+        coalesce(cu.vertical,     'Unknown')    as vertical,
+        coalesce(cu.account_size, 'Unknown')    as account_size,
+        c.model_variant, c.model_type,
+        md.model_family, md.model_publisher,
+        c.source_region, c.inference_region, c.inference_scope, c.traffic_type,
+        rm.territory, rm.govcloud,
+        c.minute_timestamp, c.event_date,
+
+        -- count(*) at minute grain = requests per minute (RPM)
+        count(*)                                            as request_count,
+        sum(c.input_tokens)                                 as input_tokens,
+        sum(c.output_tokens)                                as output_tokens,
+        sum(c.cache_read_tokens)                            as cache_read_tokens,
+        sum(c.cache_write_tokens)                           as cache_write_tokens,
+        sum(c.total_tokens)                                 as total_tokens,
+        sum(case when c.is_error then 1 else 0 end)        as error_count,
+
+        -- Error rate as a percentage — nullif prevents divide-by-zero
+        -- if a minute has zero requests (should not happen but safe)
+        round(
+            sum(case when c.is_error then 1 else 0 end)::numeric
+                / nullif(count(*), 0) * 100, 2
+        )                                                   as error_rate_pct,
+        max(c.loaded_at)                                    as loaded_at
+
+    from combined c
+    left join customer      cu on c.account_id    = cu.account_id
+    left join model_config  md on c.model_variant = md.model_variant
+    left join region_mapping rm on c.source_region = rm.source_region
+    -- LEFT JOIN not INNER JOIN — keeps all token usage rows even if a
+    -- customer or model config row is missing. INNER JOIN would silently
+    -- drop revenue-affecting rows if config data was not loaded yet.
+
+    group by
+        c.account_id, cu.company_name, cu.segment, cu.vertical, cu.account_size,
+        c.model_variant, c.model_type, md.model_family, md.model_publisher,
+        c.source_region, c.inference_region, c.inference_scope, c.traffic_type,
+        rm.territory, rm.govcloud, c.minute_timestamp, c.event_date
+)
+
+select * from aggregated</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>Mart model — token_usage_model_monthly.sql annotated</h3>
+  <p>Open <code>dbt/models/marts/token_usage/token_usage_model_monthly.sql</code>:</p>
+  <div class="code-wrap"><pre class="sql"><code>-- token_usage_model_monthly.sql
+-- Aggregates minute-level token usage to monthly grain per model.
+-- This is what Metabase queries for the monthly token usage dashboard.
+-- Reads from int_token_usage_minute — never directly from staging.
+
+{{
+    config(
+        materialized='incremental',
+        -- No account_id here — this is a model-level mart not a customer-level mart.
+        -- The customer-level equivalent is token_usage_customer_monthly.sql.
+        unique_key=['model_variant', 'model_type', 'source_region',
+                    'inference_region', 'month_start_date'],
+        incremental_strategy='delete+insert',
+        on_schema_change='append_new_columns'
+    )
+}}
+
+with monthly as (
+
+    select
+        model_variant, model_type, model_family, model_publisher,
+        source_region, inference_region, inference_scope,
+        territory, govcloud,
+
+        -- Truncate each minute_timestamp to the first day of its month.
+        -- ::date strips the time component → clean date output.
+        date_trunc('month', minute_timestamp)::date          as month_start_date,
+
+        -- Calculate the last day of the month by going forward 1 month then back 1 day.
+        (date_trunc('month', minute_timestamp)
+            + interval '1 month' - interval '1 day')::date  as month_end_date,
+
+        request_count, total_tokens, input_tokens, output_tokens, error_count
+
+    from {{ ref('int_token_usage_minute') }}
+
+    {% if is_incremental() %}
+        -- Look back one extra month to recalculate the current partial month
+        -- if new data arrives after the last run.
+        -- Without the - interval '1 month', today's data would be missed
+        -- until the next full month boundary.
+        where event_date >= (select max(month_start_date) from {{ this }})
+                          - interval '1 month'
+    {% endif %}
+
+),
+
+aggregated as (
+    select
+        model_variant, model_type, model_family, model_publisher,
+        source_region, inference_region, inference_scope,
+        territory, govcloud, month_start_date, month_end_date,
+
+        -- mean_rpm: average requests per minute across all minutes in the month.
+        -- int_token_usage_minute is already at minute grain — avg(request_count)
+        -- gives the mean RPM without needing to know total minutes.
+        round(avg(request_count), 2)                        as mean_rpm,
+        max(request_count)                                  as peak_rpm,
+
+        -- peak_to_mean ratio: high ratio = bursty traffic, low = steady.
+        -- Useful for capacity planning. nullif prevents divide-by-zero.
+        round(max(request_count)::numeric
+            / nullif(avg(request_count), 0), 2)             as peak_to_mean_rpm,
+
+        round(avg(total_tokens), 2)                         as mean_tpm,
+        max(total_tokens)                                   as peak_tpm,
+        round(max(total_tokens)::numeric
+            / nullif(avg(total_tokens), 0), 2)              as peak_to_mean_tpm,
+
+        sum(total_tokens)                                   as total_tokens,
+        sum(input_tokens)                                   as total_input_tokens,
+        sum(output_tokens)                                  as total_output_tokens,
+        sum(request_count)                                  as total_requests,
+        sum(error_count)                                    as total_errors,
+        round(sum(error_count)::numeric
+            / nullif(sum(request_count), 0) * 100, 2)       as error_rate_pct
+
+    from monthly
+    group by
+        model_variant, model_type, model_family, model_publisher,
+        source_region, inference_region, inference_scope,
+        territory, govcloud, month_start_date, month_end_date
+),
+
+with_mom as (
+    select
+        a.*,
+
+        -- LAG() window function: looks back one row (previous month)
+        -- partitioned by model + region so we compare like-for-like.
+        -- order by month_start_date ensures the previous row is actually
+        -- the previous month, not any arbitrary earlier row.
+        a.mean_rpm - lag(a.mean_rpm) over (
+            partition by a.model_variant, a.model_type,
+                         a.source_region, a.inference_region
+            order by a.month_start_date
+        )                                                   as mom_mean_rpm,
+        -- mom = month over month. Same LAG pattern repeated for each metric.
+
+        a.mean_tpm - lag(a.mean_tpm) over (
+            partition by a.model_variant, a.model_type,
+                         a.source_region, a.inference_region
+            order by a.month_start_date
+        )                                                   as mom_mean_tpm,
+
+        a.total_tokens - lag(a.total_tokens) over (
+            partition by a.model_variant, a.model_type,
+                         a.source_region, a.inference_region
+            order by a.month_start_date
+        )                                                   as mom_total_tokens,
+
+        a.total_requests - lag(a.total_requests) over (
+            partition by a.model_variant, a.model_type,
+                         a.source_region, a.inference_region
+            order by a.month_start_date
+        )                                                   as mom_total_requests
+
+    from aggregated a
+)
+
+select * from with_mom</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- SECTION B: SEEDS                                           -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+
+  <h2 style="margin-top:40px;">Section B — Seeds</h2>
+
+  <div class="callout info"><strong>What is the seeds folder?</strong>
+    <code>dbt/seeds/</code> contains static reference data that rarely changes and belongs in version control alongside your models. A seed is a CSV file that dbt loads into the database as a table via <code>dbt seed</code>. Unlike bronze tables loaded by Airflow, seeds are managed entirely by dbt.<br><br>
+    This project has one seed: <code>region_mapping.csv</code> — 29 rows mapping AWS region codes to territories, airport codes, and GovCloud flags. Several models JOIN against it to enrich token usage and revenue data with geographic context.
+  </div>
+
+  <h3>seeds.yml — annotated</h3>
+  <p>Open <code>dbt/seeds/seeds.yml</code>:</p>
+  <div class="code-wrap"><pre><code># seeds.yml configures how dbt handles the CSV files in the seeds/ folder.
+# Without this file dbt would still load the CSV but with inferred types
+# and no tests — which would cause silent errors downstream.
+
+version: 2
+
+seeds:
+  - name: region_mapping   # must exactly match the CSV filename without .csv extension
+    description: "AWS region reference data — territory, airport code, and GovCloud flag."
+
+    config:
+      schema: seeds
+      # Writes to the seeds schema instead of the default target schema.
+      # In your personal environment: dbt_yourname_seeds
+      # In prod: prod_seeds
+      # Without this, dbt would write to dbt_yourname_staging_silver
+      # (the default target schema) which is wrong for a lookup table.
+
+      column_types:
+        source_region: varchar
+        airport_code:  varchar
+        territory:     varchar
+        govcloud:      boolean   # ← the critical one
+        description:   varchar
+        # Without column_types, dbt infers types from the CSV.
+        # govcloud contains 'true'/'false' strings — dbt would infer varchar.
+        # Models that use govcloud in boolean expressions (WHERE govcloud = TRUE)
+        # would silently fail or produce wrong results.
+        # Declaring boolean here forces correct PostgreSQL type at load time.
+
+    columns:
+      - name: source_region
+        description: "AWS region code (e.g. us-east-1). Primary key."
+        tests:
+          - unique     # no duplicate region codes — downstream JOINs assume one row per region
+          - not_null   # every row must have a region code
+
+      - name: airport_code
+        description: "Three-letter IATA airport code for the region's physical location"
+        tests:
+          - not_null   # used in region enrichment — a blank would produce null in joined models
+
+      - name: territory
+        description: "Geographic territory: US, Europe, Asia Pacific, etc."
+        tests:
+          - not_null
+
+      - name: govcloud
+        description: "True if this is an AWS GovCloud region requiring special compliance handling"
+        tests:
+          - not_null
+
+      - name: description
+        description: "Human readable region description"
+        tests:
+          - not_null</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- SECTION C: SNAPSHOTS                                       -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+
+  <h2 style="margin-top:40px;">Section C — Snapshots</h2>
+
+  <div class="callout info"><strong>What is the snapshots folder?</strong>
+    <code>dbt/snapshots/</code> tracks how records change over time. Bronze tables are append-only — they never update existing rows. But some source data does change — a customer's segment, a model going inactive. Snapshots take a periodic photograph of a staging model and record what changed between each run.<br><br>
+    This project has two snapshots: <code>customer_details_snapshot</code> tracks changes to customer segment, vertical, and active status. <code>model_availability_snapshot</code> tracks when AI models go active or inactive in each region.
+  </div>
+
+  <h3>customer_details_snapshot.sql — annotated</h3>
+  <p>Open <code>dbt/snapshots/customer_details_snapshot.sql</code>:</p>
+  <div class="code-wrap"><pre class="sql"><code>-- customer_details_snapshot.sql
+-- Tracks changes to customer segment, vertical, account size, and active status.
+-- Run on a schedule (e.g. daily) via Airflow or manually via dbt snapshot.
+
+-- The {% snapshot %} wrapper identifies this as a snapshot to dbt.
+-- The name becomes the table name in the snapshots schema.
+{% snapshot customer_details_snapshot %}
+
+{{
+    config(
+      target_schema='snapshots',
+      -- Writes to the snapshots schema.
+      -- In your personal environment: dbt_yourname_snapshots
+
+      unique_key='account_id',
+      -- The column that identifies each record.
+      -- When dbt sees the same account_id with different values it knows
+      -- the record changed and creates a new snapshot row.
+
+      strategy='timestamp',
+      -- Uses the date_updated column to detect changes.
+      -- On each run, dbt compares the current date_updated against what
+      -- it last saw. If it changed → record has been updated.
+      -- Alternative: strategy='check' — compares column values directly,
+      -- useful when there is no updated_at timestamp in the source.
+
+      updated_at='date_updated',
+      -- The specific timestamp column to use for the timestamp strategy.
+      -- dbt reads this from the SELECT below.
+
+      invalidate_hard_deletes=True
+      -- If a customer is deleted from the source, dbt closes their snapshot
+      -- row by setting dbt_valid_to to the current timestamp.
+      -- Without this, deleted records would remain open forever — appearing
+      -- as still active in any query that filters WHERE dbt_valid_to IS NULL.
+    )
+}}
+
+-- Reads from staging — not from bronze directly.
+-- This means the snapshot captures already-cleaned, standardised data.
+-- Only the columns selected here are tracked for changes.
+-- If company_name changes but is not listed here, dbt does not record it.
+select
+    account_id,
+    customer_company_id,
+    company_name,
+    customer_segment,    -- if this changes (e.g. Commercial → Strategic) dbt records it
+    customer_vertical,   -- if this changes dbt records it
+    customer_account_size,
+    is_active_customer,  -- if a customer deactivates dbt records when it happened
+    date_updated         -- the updated_at column declared in config above
+
+from {{ ref('stg_customer_details') }}
+
+{% endsnapshot %}
+
+-- ── What dbt adds automatically ──────────────────────────────────────────────
+-- dbt adds 4 metadata columns to every snapshot table:
+--   dbt_scd_id      unique ID for each snapshot row
+--   dbt_updated_at  when this snapshot row was written by dbt
+--   dbt_valid_from  when this version of the record became active
+--   dbt_valid_to    when this version ended (NULL = currently active)
+--
+-- Query current state of all customers:
+--   SELECT * FROM snapshots.customer_details_snapshot WHERE dbt_valid_to IS NULL
+--
+-- Query what a customer looked like on 2025-06-01:
+--   SELECT * FROM snapshots.customer_details_snapshot
+--   WHERE account_id = 'ACC001'
+--     AND dbt_valid_from <= '2025-06-01'
+--     AND (dbt_valid_to > '2025-06-01' OR dbt_valid_to IS NULL)</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- SECTION D: MACROS AND TESTS                                -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+
+  <h2 style="margin-top:40px;">Section D — Macros and Tests</h2>
+
+  <div class="callout info"><strong>What is the macros folder?</strong>
+    <code>dbt/macros/</code> contains reusable Jinja functions that generate SQL. Instead of writing the same complex SQL pattern in multiple models, you write it once as a macro and call it by name. Macros run during compilation — before any SQL runs in the database — so they produce SQL text, not query results.<br><br>
+    This project has 6 macros. Two work as a pair: <code>add_prior_period_metrics</code> calls <code>safe_prior_period</code> internally.
+  </div>
+
+  <h3>safe_prior_period.sql — annotated</h3>
+  <p>Open <code>dbt/macros/safe_prior_period.sql</code> — this is the lower-level macro, read it first:</p>
+  <div class="code-wrap"><pre><code>-- safe_prior_period.sql
+-- Generates a LAG window function with a data-gap guard.
+-- Called by add_prior_period_metrics — never called directly in models.
+
+{% macro safe_prior_period(metric, partition_cols, date_col, period_type) %}
+-- Arguments:
+--   metric        : the column to look back on e.g. 'net_revenue'
+--   partition_cols: list of columns to partition by e.g. ['model_variant', 'source_region']
+--   date_col      : the date column to order by e.g. 'month_start_date'
+--   period_type   : 'month', 'week', 'day' — controls the interval gap check
+
+    case
+        -- The guard: check whether the previous row is actually one period earlier.
+        -- lag(date_col) looks back one row. If that row's date equals
+        -- the current date minus one period, the data is contiguous — safe to use.
+        -- If the data has a gap (e.g. Jan → Mar skipping Feb), the previous row
+        -- would be Jan which does NOT equal Mar - 1 month = Feb.
+        -- In that case we return 0 instead of a misleading prior-period value.
+        when lag({{ date_col }}) over (
+            partition by {{ partition_cols | join(', ') }}
+            order by {{ date_col }}
+        ) = {{ date_col }} - interval '1 {{ period_type }}'
+        -- If the gap check passes — return the previous row's metric value
+        then lag({{ metric }}) over (
+            partition by {{ partition_cols | join(', ') }}
+            order by {{ date_col }}
+        )
+        -- If the gap check fails (missing period) — return 0 not null.
+        -- Returning null would make the change calculation null too,
+        -- which is harder to handle in BI tools than a clean 0.
+        else 0
+    end
+{% endmacro %}</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <h3>add_prior_period_metrics.sql — annotated</h3>
+  <p>Open <code>dbt/macros/add_prior_period_metrics.sql</code>:</p>
+  <div class="code-wrap"><pre><code>-- add_prior_period_metrics.sql
+-- Loops over a list of metrics and generates two SQL columns per metric:
+--   1. The prior period value (e.g. prior_month_net_revenue)
+--   2. The period-over-period change (e.g. mod_net_revenue_change)
+-- Calling this with 3 metrics generates 6 SQL columns automatically.
+-- Used in mart models to add month-over-month or week-over-week comparisons.
+
+{% macro add_prior_period_metrics(metrics, partition_cols, date_col, period_type='day') %}
+-- Arguments:
+--   metrics       : list of metric column names e.g. ['net_revenue', 'total_tokens']
+--   partition_cols: columns to partition the window by
+--   date_col      : date column to order the window by
+--   period_type   : defaults to 'day', pass 'month' or 'week' for other grains
+
+    {% for metric in metrics %}
+    -- Loop generates two lines per metric. For 'net_revenue' with period_type='month':
+    --   safe_prior_period(...) as prior_month_net_revenue,
+    --   net_revenue - safe_prior_period(...) as mod_net_revenue_change
+
+    -- Prior period value — calls safe_prior_period which handles data gaps
+    {{ safe_prior_period(
+        metric,
+        partition_cols,
+        date_col,
+        period_type
+    ) }} as prior_{{ period_type }}_{{ metric.split('.')[-1] }},
+    -- metric.split('.')[-1] extracts just the column name from a fully qualified
+    -- reference like 'r.net_revenue' → 'net_revenue' for the output column name.
+
+    -- Period-over-period change: current value minus prior period value
+    {{ metric }} - {{ safe_prior_period(
+        metric,
+        partition_cols,
+        date_col,
+        period_type
+    ) }} as {{ period_type[0:3] }}od_{{ metric.split('.')[-1] }}_change{{ "," if not loop.last else "" }}
+    -- period_type[0:3] takes the first 3 chars: 'month' → 'mon', 'week' → 'wee', 'day' → 'day'
+    -- "," if not loop.last else "" adds a comma after every column except the last —
+    -- avoids trailing comma SQL syntax errors when the macro is used mid-SELECT.
+
+    {% endfor %}
+{% endmacro %}</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>What is the tests folder?</strong>
+    <code>dbt/tests/</code> contains custom SQL tests — data quality checks you write yourself for business rules that cannot be expressed as a single column check. A custom test is a SQL query that returns rows when something is wrong. Zero rows = pass. Any rows = fail — dbt shows you exactly which rows violated the rule.
+  </div>
+
+  <h3>test_revenue_always_positive.sql — annotated</h3>
+  <p>Open <code>dbt/tests/test_revenue_always_positive.sql</code>:</p>
+  <div class="code-wrap"><pre class="sql"><code>-- test_revenue_always_positive.sql
+-- Custom test: revenue must never be negative anywhere in the pipeline.
+--
+-- HOW CUSTOM TESTS WORK:
+-- dbt runs this SQL. If it returns zero rows → test passes.
+-- If it returns any rows → test fails and dbt logs the failing rows.
+-- The columns in the SELECT become the diagnostic output you see in the logs.
+--
+-- WHY TEST AT THE INTERMEDIATE LAYER:
+-- Testing int_revenue_daily rather than a mart model catches the problem
+-- before it propagates to all 6 revenue mart models.
+-- It also catches both raw data problems (negative values in bronze)
+-- AND transformation bugs (calculation errors introduced in int_revenue_daily).
+
+select
+    -- Diagnostic columns — included so the error log tells you immediately
+    -- which account, model, region, and date has negative revenue.
+    -- Without these you would have to re-run the query manually to investigate.
+    account_id,
+    model_variant,
+    source_region,
+    revenue_date,
+    total_gross_revenue,
+    net_revenue,
+    'Negative revenue detected' as issue   -- human-readable label in the error output
+
+from {{ ref('int_revenue_daily') }}
+-- ref() ensures this test runs AFTER int_revenue_daily is built —
+-- dbt includes it in the dependency graph automatically.
+
+where total_gross_revenue < 0
+   or net_revenue < 0
+-- Returns rows only when revenue is negative.
+-- total_gross_revenue < 0 catches bad source data in bronze.
+-- net_revenue < 0 catches cases where savings_plan + discount > gross revenue
+-- (would mean we are paying the customer — an accounting error).</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
 </section>
 
 <!-- STEP 2 removed — dbt shell function is set up in Runbook 2 Step 4a -->

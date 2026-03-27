@@ -56,3 +56,6 @@ models:
       +post-hook:               # grant access after each model builds
         - "GRANT SELECT ON {{ this }} TO analytics_engineer"
         - "GRANT SELECT ON {{ this }} TO business_user"
+
+    dbt_project_evaluator:
+      +enabled: "{{ target.name != 'prod' }}"

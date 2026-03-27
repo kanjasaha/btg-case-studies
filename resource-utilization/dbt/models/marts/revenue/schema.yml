@@ -1,0 +1,132 @@
+version: 2
+
+models:
+  - name: customer_revenue_monthly
+    description: "{{ doc('customer_revenue_monthly_overview') }}"
+
+    # latest_version tells dbt which version unversioned ref() resolves to
+    # ref('customer_revenue_monthly') → resolves to v2
+    # ref('customer_revenue_monthly', v=1) → resolves to v1
+    # exam: unversioned ref always resolves to latest_version
+    latest_version: 2
+
+    config:
+      tags: ["monthly", "revenue", "customer", "mart"]
+      contract:
+        enforced: true
+      access: public
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [account_id, month_start_date]
+
+    versions:
+      - v: 1
+        # deprecation_date — soft warning, does NOT block the run
+        # any model still using ref('customer_revenue_monthly', v=1)
+        # gets a compile-time warning after this date
+        # exam: past deprecation_date = warning only, run continues
+        deprecation_date: 2026-06-01
+        defined_in: customer_revenue_monthly_v1
+
+      - v: 2
+        defined_in: customer_revenue_monthly_v2
+
+    columns:
+      - name: account_id
+        data_type: varchar
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customer_details')
+              field: account_id
+              config:
+                severity: warn
+                store_failures: true
+
+      - name: company_name
+        data_type: varchar
+
+      - name: segment
+        description: "{{ doc('segment_definition') }}"
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: vertical
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: account_size
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: month_start_date
+        description: "First day of the month"
+        data_type: date
+        tests:
+          - not_null
+
+      - name: month_end_date
+        description: "Last day of the month"
+        data_type: date
+        tests:
+          - not_null
+
+      - name: total_gross_revenue
+        description: "Total gross revenue for the month"
+        data_type: numeric
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+              config:
+                severity: error
+                store_failures: true
+
+      - name: total_net_revenue
+        description: "{{ doc('net_revenue_definition') }}"
+        data_type: numeric
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+              config:
+                severity: error
+                store_failures: true
+
+      - name: active_days
+        description: "Number of days with revenue activity"
+        data_type: bigint
+        tests:
+          - not_null
+
+      - name: avg_daily_net_revenue
+        data_type: numeric
+
+      - name: max_daily_net_revenue
+        data_type: numeric
+
+      - name: min_daily_net_revenue
+        data_type: numeric
+
+      - name: prior_month_gross_revenue
+        data_type: numeric
+
+      - name: prior_month_net_revenue
+        data_type: numeric
+
+      - name: mom_gross_revenue_change
+        description: "{{ doc('mom_change_definition') }}"
+        data_type: numeric
+
+      - name: mom_net_revenue_change
+        data_type: numeric
+
+      - name: mom_gross_revenue_pct_change
+        data_type: numeric
+
+      - name: mom_net_revenue_pct_change
+        data_type: numeric

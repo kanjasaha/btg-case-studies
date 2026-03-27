@@ -16,3 +16,6 @@ __pycache__/
 
 # Mac
 .DS_Store
+resource-utilization/dbt/models/staging/sources.yml.backup
+resource-utilization/*.html
+*.code-workspace

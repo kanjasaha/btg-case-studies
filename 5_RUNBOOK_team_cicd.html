@@ -126,12 +126,14 @@
   <div id="toc-body">
     <div class="toc-section">
       <div class="toc-section-label">Understand</div>
+      <a href="#preflight" class="toc-link"><span class="sn" style="background:#991b1b;">!</span>Pre-flight check</a>
       <a href="#overview" class="toc-link"><span class="sn gray">→</span>The full flow</a>
       <a href="#who-does-what" class="toc-link"><span class="sn gray">→</span>Who does what</a>
       <a href="#branches" class="toc-link"><span class="sn gray">→</span>Git branches explained</a>
     </div>
     <div class="toc-section">
       <div class="toc-section-label">Set up CI/CD</div>
+      <a href="#step0" class="toc-link"><span class="sn" style="background:#7c3aed;">0</span>Set up self-hosted runner</a>
       <a href="#step1" class="toc-link"><span class="sn">1</span>Set up GitHub Actions</a>
       <a href="#step2" class="toc-link"><span class="sn">2</span>Add GitHub Secrets</a>
       <a href="#step3" class="toc-link"><span class="sn">3</span>Create the CI workflow</a>
@@ -148,6 +150,36 @@
     </div>
   </div>
 </nav>
+
+<!-- PRE-FLIGHT CHECK -->
+<section id="preflight" style="margin-bottom:32px;">
+  <div class="step-header">
+    <div class="sc" style="background:#991b1b;font-size:13px;">!</div>
+    <h2>Pre-flight check — confirm before continuing</h2>
+  </div>
+
+  <div class="callout error"><strong>Check 1 — yourname is replaced in profiles.yml:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>grep "yourname" dbt/profiles.yml</code></pre></div>
+    Must return nothing. If you see output — fix it before continuing.
+  </div>
+
+  <div class="callout error"><strong>Check 2 — dbt shell function is active:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>type dbt</code></pre></div>
+    Must show <code>dbt is a shell function</code>. If not — run <code>source ~/.zshrc</code>.
+  </div>
+
+  <div class="callout error"><strong>Check 3 — stack is running:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>docker compose ps</code></pre></div>
+    All 5 containers must show <code>Up</code>. If any show <code>Exit</code> — run <code>docker compose up -d</code>.
+  </div>
+
+  <div class="callout error"><strong>Check 4 — self-hosted runner is active:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>ls ~/actions-runner/</code></pre></div>
+    You should see the runner files including <code>run.sh</code>. If the folder doesn't exist — complete Step 0 first. If it exists but the runner isn't running — open a dedicated terminal, <code>cd ~/actions-runner</code> and run <code>./run.sh</code>, then confirm it shows <code>Listening for Jobs</code> before continuing.
+  </div>
+
+  <div class="checkpoint">grep returns nothing. dbt is a shell function. All 5 containers Up. Runner shows Listening for Jobs on GitHub. You are clear to continue.</div>
+</section>
 
 <!-- OVERVIEW -->
 <section id="overview">
@@ -288,6 +320,121 @@ git push origin dev</code></pre><button class="copy-btn" onclick="copyCode(this)
 
 </section>
 
+<!-- STEP 0: SELF-HOSTED RUNNER -->
+<section id="step0">
+  <div class="step-header"><div class="sc" style="background:#7c3aed;">0</div><h2>Set up the self-hosted runner</h2></div>
+
+  <div class="callout purple"><strong>Why a self-hosted runner is required here.</strong>
+    GitHub Actions has two types of runners:<br><br>
+    <strong>Cloud runners</strong> (<code>runs-on: ubuntu-latest</code>) — GitHub spins up a fresh virtual machine in the cloud to run your job. Fast and zero maintenance. But it cannot reach your Mac's PostgreSQL — your database lives inside Docker on your laptop, behind your home router, with no public IP address. The cloud runner has no way to connect to <code>localhost:5432</code> on your machine.<br><br>
+    <strong>Self-hosted runner</strong> (<code>runs-on: self-hosted</code>) — a small process that you run on your Mac. It registers with GitHub, listens for jobs, and executes them locally. When GitHub triggers a CI run, the job runs on your Mac where it can reach <code>localhost:5432</code> directly — no VPN, no tunnel, no firewall issues.<br><br>
+    This is the standard solution for teams whose database is not publicly accessible: run the GitHub Actions runner on a machine that <em>can</em> reach the database.
+  </div>
+
+  <h3>Step 1 — Register the runner with GitHub</h3>
+  <ol>
+    <li>Open your repository on GitHub</li>
+    <li>Go to <strong>Settings → Actions → Runners → New self-hosted runner</strong></li>
+    <li>Select <strong>macOS</strong> and <strong>ARM64</strong> (Apple Silicon) or <strong>X64</strong> (Intel)</li>
+    <li>GitHub will show you a set of commands — follow them exactly. They look like this:</li>
+  </ol>
+
+  <div class="code-wrap"><pre><code># Create a folder for the runner (GitHub will show the exact URL for your repo)
+mkdir actions-runner && cd actions-runner
+
+# Download the runner package (use the URL GitHub gives you — do not copy this one)
+curl -o actions-runner-osx-arm64.tar.gz -L https://github.com/actions/runner/releases/download/v2.x.x/actions-runner-osx-arm64-2.x.x.tar.gz
+
+# Extract
+tar xzf ./actions-runner-osx-arm64.tar.gz
+
+# Configure — GitHub will give you the exact token for your repo
+./config.sh --url https://github.com/YOUR-ORG/YOUR-REPO --token YOUR-TOKEN</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Use the exact commands GitHub shows you.</strong>
+    The token GitHub generates is unique to your repo and expires after one hour. Copy and run the commands directly from the GitHub UI — do not use the example above verbatim.
+  </div>
+
+  <h3>Step 2 — Start the runner</h3>
+  <p>Open a terminal and run:</p>
+  <div class="code-wrap"><pre><code>cd ~/actions-runner
+./run.sh</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout warning"><strong>Leave this terminal open while you are working.</strong>
+    The runner only accepts jobs while <code>./run.sh</code> is running. If you close the terminal or put your Mac to sleep, the runner goes offline and GitHub Actions jobs will queue and wait. Keep it running in a dedicated terminal tab while you are developing.<br><br>
+    You will see output like: <code>Listening for Jobs</code> — this confirms the runner is connected to GitHub and ready.
+  </div>
+
+  <div class="checkpoint">On GitHub → Settings → Actions → Runners, your Mac appears with a green dot and status <strong>Idle</strong>.</div>
+
+  <h3>Step 3 — Verify the runner can reach PostgreSQL</h3>
+  <p>Before adding workflow files, confirm the runner's environment can connect to your database:</p>
+  <div class="code-wrap"><pre><code># In a NEW terminal (not the one running ./run.sh)
+psql -h localhost -p 5432 -U airflow -d btg_resource_utilization -c "SELECT 1;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="checkpoint">Returns <code>?column? = 1</code>. If this works from your terminal, it will work from the self-hosted runner — they both run on your Mac.</div>
+
+  <h3>Step 4 — Add profiles.yml to the repo for CI</h3>
+  <p>The self-hosted runner runs dbt using the <code>profiles.yml</code> from your repo. You need a CI-safe version checked in. Create it at <code>dbt/profiles.yml</code> — it reads credentials from environment variables injected by GitHub Secrets (set up in Step 2):</p>
+
+  <div class="code-wrap"><pre class="yaml"><code># dbt/profiles.yml
+# This file is used by the self-hosted runner for CI and prod workflows.
+# Credentials come from GitHub Secrets — never hardcoded here.
+# Your personal target uses ~/.dbt/profiles.yml (not this file) — keep that gitignored.
+
+resource_utilization:
+  target: personal
+  outputs:
+
+    personal:
+      type: postgres
+      host: localhost
+      port: 5432
+      user: airflow
+      password: airflow
+      dbname: btg_resource_utilization
+      schema: dbt_yourname_staging_silver
+      threads: 4
+
+    ci:
+      type: postgres
+      host: "{{ env_var('DBT_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_USER', 'airflow') }}"
+      password: "{{ env_var('DBT_PASSWORD', 'airflow') }}"
+      dbname: "{{ env_var('DBT_DBNAME', 'btg_resource_utilization') }}"
+      schema: dbt_ci_staging_silver
+      threads: 4
+
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_USER', 'airflow') }}"
+      password: "{{ env_var('DBT_PASSWORD', 'airflow') }}"
+      dbname: "{{ env_var('DBT_DBNAME', 'btg_resource_utilization') }}"
+      schema: dev_staging_silver
+      threads: 4
+
+    prod:
+      type: postgres
+      host: "{{ env_var('DBT_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_USER', 'airflow') }}"
+      password: "{{ env_var('DBT_PASSWORD', 'airflow') }}"
+      dbname: "{{ env_var('DBT_DBNAME', 'btg_resource_utilization') }}"
+      schema: prod_staging_silver
+      threads: 4</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Why localhost works here.</strong>
+    Because the self-hosted runner runs on your Mac, <code>localhost</code> in the workflow points to your Mac — which is exactly where Docker and PostgreSQL are running. The GitHub Secrets for the local stack are simply: <code>DBT_HOST=localhost</code>, <code>DBT_PORT=5432</code>, <code>DBT_USER=airflow</code>, <code>DBT_PASSWORD=airflow</code>, <code>DBT_DBNAME=btg_resource_utilization</code>.
+  </div>
+
+  <div class="callout warning"><strong>Do not gitignore this profiles.yml.</strong>
+    Unlike your personal <code>~/.dbt/profiles.yml</code> (which contains hardcoded credentials and must never be committed), this repo-level <code>dbt/profiles.yml</code> contains no real passwords — only <code>env_var()</code> references. It is safe to commit and required for CI to work.
+  </div>
+
+</section>
+
 <!-- STEP 1: GITHUB ACTIONS SETUP -->
 <section id="step1">
   <div class="step-header"><div class="sc">1</div><h2>Set up GitHub Actions and branch protection</h2></div>
@@ -333,20 +480,22 @@ touch .github/workflows/.gitkeep</code></pre><button class="copy-btn" onclick="c
   </ol>
 
   <table>
-    <thead><tr><th>Secret name</th><th>Value</th></tr></thead>
+    <thead><tr><th>Secret name</th><th>Value for this local stack</th><th>Why</th></tr></thead>
     <tbody>
-      <tr><td><code>DBT_HOST</code></td><td><code>localhost</code></td></tr>
-      <tr><td><code>DBT_PORT</code></td><td><code>5432</code></td></tr>
-      <tr><td><code>DBT_USER</code></td><td><code>mds_user</code></td></tr>
-      <tr><td><code>DBT_PASSWORD</code></td><td><code>mds_password</code></td></tr>
-      <tr><td><code>DBT_DBNAME</code></td><td><code>btg_resource_utilization</code></td></tr>
+      <tr><td><code>DBT_HOST</code></td><td><code>localhost</code></td><td>The self-hosted runner runs on your Mac, so localhost hits Docker PostgreSQL directly</td></tr>
+      <tr><td><code>DBT_PORT</code></td><td><code>5432</code></td><td>PostgreSQL default port, exposed by Docker</td></tr>
+      <tr><td><code>DBT_USER</code></td><td><code>airflow</code></td><td>The PostgreSQL user created in Runbook 1</td></tr>
+      <tr><td><code>DBT_PASSWORD</code></td><td><code>airflow</code></td><td>The PostgreSQL password created in Runbook 1</td></tr>
+      <tr><td><code>DBT_DBNAME</code></td><td><code>btg_resource_utilization</code></td><td>Your database name</td></tr>
     </tbody>
   </table>
 
-  <div class="callout warning"><strong>For this tutorial only — localhost limitation.</strong>
-    In this local tutorial, PostgreSQL runs on your Mac. GitHub Actions runs on GitHub's servers — it cannot reach your Mac's localhost. For the CI workflow to actually connect to your database, you would need a cloud database (like Supabase or RDS).<br><br>
-    In this runbook you will still create and practice the full CI workflow. The database connection will fail in GitHub Actions (because it cannot reach your Mac), but you will learn to simulate CI locally using the exact same commands — which is what matters for your development practice.<br><br>
-    When you move to a real cloud database, just update these secrets with the cloud credentials and CI will work end-to-end automatically.
+  <div class="callout info"><strong>Why localhost works with a self-hosted runner.</strong>
+    Because the self-hosted runner is a process running on your Mac, <code>localhost</code> in any workflow step resolves to your Mac — exactly where Docker and PostgreSQL are running. No VPN, no tunnel, no public IP needed. This is the entire point of the self-hosted runner: GitHub sends the job instructions to your Mac, and your Mac executes them.
+  </div>
+
+  <div class="callout warning"><strong>Moving to a cloud database later?</strong>
+    When you move to a real cloud database (Supabase, RDS, Snowflake etc.), just update these secrets with the cloud host and credentials. You can switch to <code>runs-on: ubuntu-latest</code> at that point — cloud databases have public endpoints that GitHub's cloud runners can reach. The workflow YAML stays identical; only the secrets change.
   </div>
 
 </section>
@@ -390,21 +539,16 @@ env:
 jobs:
   dbt-ci:
     name: dbt CI — build modified models and run tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted   # runs on your Mac — required to reach localhost PostgreSQL
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install dbt
-        run: |
-          pip install dbt-core dbt-postgres
-          cd dbt && dbt deps
+      - name: Install dbt packages
+        # dbt is already installed on the self-hosted runner (your Mac)
+        # Just install project packages from packages.yml
+        run: cd dbt && dbt deps --profiles-dir .
 
       - name: Download production manifest for Slim CI
         uses: actions/download-artifact@v4
@@ -442,10 +586,11 @@ jobs:
           retention-days: 7</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <div class="callout info"><strong>What is Slim CI?</strong>
-    The key command is <code>dbt build --select state:modified+ --defer --state ./prod-state/</code>.<br><br>
+    The key command is <code>dbt build --select state:modified+ --defer --state ./prod-state/ --target ci</code>.<br><br>
     <code>state:modified+</code> — only build models whose SQL actually changed in this PR, plus all their downstream dependents.<br><br>
-    <code>--defer --state ./prod-state/</code> — for any upstream model you didn't change, read from the production table instead of rebuilding it.<br><br>
-    Result: CI only builds 2-3 models instead of the entire project. It's fast, cheap, and still runs all tests on full prod-scale data via defer.
+    <code>--defer --state ./prod-state/</code> — for any upstream model you didn't change, read from <code>prod_staging_silver</code> or <code>prod_mart_gold</code> instead of rebuilding it. The output of your changed models lands in the <code>dbt_ci</code> schema — not in prod.<br><br>
+    <code>--target ci</code> — writes results to the <code>dbt_ci_staging_silver</code> / <code>dbt_ci_mart_gold</code> schemas. This is a temporary schema — it is cleaned up after the PR closes.<br><br>
+    Result: CI only builds 2-3 models instead of the entire project. It's fast and still tests your models against real prod-scale data via defer. And because it runs on your Mac (self-hosted runner), it can reach your localhost PostgreSQL directly.
   </div>
 
   <div class="callout info"><strong>What tests does CI run?</strong>
@@ -487,21 +632,15 @@ env:
 jobs:
   dbt-prod:
     name: dbt Production — full build and test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted   # runs on your Mac — required to reach localhost PostgreSQL
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install dbt
-        run: |
-          pip install dbt-core dbt-postgres
-          cd dbt && dbt deps
+      - name: Install dbt packages
+        # dbt is already installed on the self-hosted runner (your Mac)
+        run: cd dbt && dbt deps --profiles-dir .
 
       - name: Check source freshness
         run: |

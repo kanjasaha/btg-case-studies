@@ -669,6 +669,13 @@ resource_utilization:
 
   <div class="checkpoint"><code>dbt/profiles.yml.example</code> shows as untracked. <code>dbt/profiles.yml</code> does NOT appear anywhere. If it does — do not add it. Check your <code>.gitignore</code> has <code>dbt/profiles.yml</code> on its own line.</div>
 
+  <div class="callout error"><strong>Stop here and verify you replaced "yourname" before continuing.</strong>
+    Run this command — it should return nothing:
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>grep "yourname" dbt/profiles.yml</code></pre></div>
+    If you see any output, you forgot to replace <code>yourname</code>. Open <code>dbt/profiles.yml</code>, find <code>schema: dbt_yourname</code> and change it to your actual first name — e.g. <code>schema: dbt_alice</code>.<br><br>
+    This is critical. If you continue with <code>dbt_yourname</code>, dbt will create schemas literally called <code>dbt_yourname_staging_silver</code> and <code>dbt_yourname_mart_gold</code> in PostgreSQL — confusing to everyone on your team and requiring a manual cleanup later.
+  </div>
+
   <p>Commit only the example:</p>
   <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
 git add .
@@ -726,7 +733,13 @@ dbt debug</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</bu
 
   <div class="checkpoint">The last line says <code>All checks passed!</code></div>
 
-  <h3>Step 4c — Install dbt packages</h3>
+  <div class="callout info"><strong>Verify your schema names before running any models.</strong>
+    Run this to confirm dbt will write to the right schemas — not bare <code>staging_silver</code> or literal <code>dbt_yourname_staging_silver</code>:
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>dbt compile --select stg_customer_details 2>/dev/null | grep -i "schema\|relation"</code></pre></div>
+    Or simpler — just check what schema your personal target resolves to:
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>grep "schema:" dbt/profiles.yml</code></pre></div>
+    You should see four lines — your name (e.g. <code>dbt_alice</code>), <code>ci</code>, <code>dev</code>, <code>prod</code>. If any line still shows <code>dbt_yourname</code> — stop, fix profiles.yml, and do not proceed until it is corrected.
+  </div>
 
   <p>This project uses two dbt packages. First create the <code>packages.yml</code> file that lists them:</p>
 

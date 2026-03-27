@@ -11,9 +11,6 @@
     --green:#166534;--green-bg:#f0fdf4;--green-border:#bbf7d0;
     --amber:#92400e;--amber-bg:#fffbeb;--amber-border:#fde68a;
     --red:#991b1b;--red-bg:#fef2f2;--red-border:#fecaca;
-    --bronze:#92400e;--bronze-bg:#fff7ed;--bronze-border:#fed7aa;
-    --silver:#374151;--silver-bg:#f9fafb;--silver-border:#d1d5db;
-    --gold:#854d0e;--gold-bg:#fefce8;--gold-border:#fef08a;
     --mono:'SF Mono','Fira Code','Consolas',monospace;--radius:8px;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
@@ -26,7 +23,7 @@
   .prereq strong{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;}
   #toc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:48px;overflow:hidden;}
   .toc-header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg3);}
-  .toc-title{font-size:14px;font-weight:600;}
+  .toc-title{font-size:14px;font-weight:600;color:var(--text);}
   .toc-toggle{background:none;border:1px solid var(--border);border-radius:4px;padding:3px 10px;font-size:12px;color:var(--muted);cursor:pointer;}
   .toc-toggle:hover{background:var(--border);}
   #toc-body{display:grid;grid-template-columns:repeat(3,1fr);}
@@ -66,21 +63,17 @@
   tr:hover td{background:var(--bg2);}
   .checkpoint{background:var(--green-bg);border:1px solid var(--green-border);border-radius:var(--radius);padding:14px 18px;margin:20px 0;font-size:14.5px;color:var(--green);}
   .checkpoint::before{content:'✅  You should see: ';font-weight:700;}
-  .layer{display:inline-block;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600;margin:0 2px;}
-  .bronze{background:var(--bronze-bg);color:var(--bronze);border:1px solid var(--bronze-border);}
-  .silver{background:var(--silver-bg);color:var(--silver);border:1px solid var(--silver-border);}
-  .gold{background:var(--gold-bg);color:var(--gold);border:1px solid var(--gold-border);}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0;font-size:13.5px;}
+  .flow-box{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 16px;font-weight:600;text-align:center;}
+  .flow-box.accent{background:var(--accent-light);border-color:var(--accent);color:#1e3a6e;}
+  .flow-arrow{color:var(--muted);font-size:20px;font-weight:300;}
   .dag-box{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:18px 0;}
   .dag-header{background:var(--bg3);padding:10px 16px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border);}
   .dag-body{padding:14px 16px;font-size:14px;}
   .dag-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
   .dag-row:last-child{margin-bottom:0;}
-  .dag-label{font-family:var(--mono);font-size:13px;min-width:280px;}
+  .dag-label{font-family:var(--mono);font-size:13px;min-width:200px;}
   .dag-schedule{color:var(--muted);font-size:13px;}
-  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0;font-size:13.5px;}
-  .flow-box{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-weight:600;}
-  .flow-arrow{color:var(--muted);font-size:18px;}
-  .flow-box.accent{background:var(--accent-light);border-color:var(--accent);color:#1e3a6e;}
   ol{padding-left:22px;margin:12px 0 16px;}
   ol li{margin-bottom:8px;}
   ul{padding-left:22px;margin:12px 0 16px;}
@@ -112,6 +105,64 @@
   Complete <strong>Runbooks 1, 2, and 3</strong> first. Your stack must be running, all bronze data loaded, the full dbt pipeline built and tested in your personal schema (<code>dbt build</code> completes with no failures), and Cosmos already installed — it was included in <code>airflow/requirements.txt</code> from Runbook 1.
 </div>
 
+<!-- TABLE OF CONTENTS -->
+<nav id="toc">
+  <div class="toc-header">
+    <span class="toc-title">📋 Table of Contents</span>
+    <button class="toc-toggle" onclick="toggleToc()" id="toc-btn">Hide</button>
+  </div>
+  <div id="toc-body">
+    <div class="toc-section">
+      <div class="toc-section-label">Understand</div>
+      <a href="#preflight" class="toc-link"><span class="sn" style="background:#991b1b;">!</span>Pre-flight check</a>
+      <a href="#cd-framing" class="toc-link"><span class="sn" style="background:#7c3aed;font-size:8px;">CD</span>Airflow as CD</a>
+      <a href="#concepts" class="toc-link"><span class="sn gray">→</span>Core concepts</a>
+      <a href="#cosmos" class="toc-link"><span class="sn gray">→</span>Why Cosmos?</a>
+      <a href="#cosmos-tradeoffs" class="toc-link"><span class="sn gray">→</span>Why not Cosmos yet</a>
+      <a href="#pipeline" class="toc-link"><span class="sn gray">→</span>The automated pipeline</a>
+    </div>
+    <div class="toc-section">
+      <div class="toc-section-label">Set up</div>
+      <a href="#step1" class="toc-link"><span class="sn">1</span>Create prod schemas</a>
+      <a href="#step2" class="toc-link"><span class="sn">2</span>Create the Airflow connection</a>
+      <a href="#step3" class="toc-link"><span class="sn">3</span>Add the DAG file</a>
+      <a href="#step4" class="toc-link"><span class="sn">4</span>Verify DAG appears in Airflow</a>
+    </div>
+    <div class="toc-section">
+      <div class="toc-section-label">Run &amp; verify</div>
+      <a href="#step5" class="toc-link"><span class="sn">5</span>Trigger manually and verify</a>
+      <a href="#step6" class="toc-link"><span class="sn">6</span>Enable the schedule</a>
+      <a href="#step7" class="toc-link"><span class="sn">7</span>Spot-check the data</a>
+      <a href="#troubleshooting" class="toc-link"><span class="sn gray">?</span>Troubleshooting</a>
+    </div>
+  </div>
+</nav>
+
+<!-- PRE-FLIGHT CHECK -->
+<section id="preflight">
+  <div class="step-header">
+    <div class="sc" style="background:#991b1b;font-size:13px;">!</div>
+    <h2>Pre-flight check — confirm before continuing</h2>
+  </div>
+
+  <div class="callout error"><strong>Check 1 — stack is running:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>docker compose ps</code></pre></div>
+    All 5 containers must show <code>Up</code>. If any show <code>Exit</code> — run <code>docker compose up -d</code> and wait 30 seconds.
+  </div>
+
+  <div class="callout error"><strong>Check 2 — Cosmos is installed:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>docker exec btg-airflow-scheduler python -c "import cosmos; print(cosmos.__version__)"</code></pre></div>
+    Must print a version number (e.g. <code>1.13.1</code>). Warnings about urllib3 or Airflow 3 are normal — ignore them. If you see <code>ModuleNotFoundError</code> — go back to Runbook 1 and rebuild with <code>docker compose build --no-cache</code>.
+  </div>
+
+  <div class="callout error"><strong>Check 3 — personal schema is built:</strong>
+    <div class="code-wrap" style="margin:8px 0 4px;"><pre style="margin:0;"><code>dbt build</code></pre></div>
+    Must complete with no failures. You need a working personal schema as a baseline before automating production.
+  </div>
+
+  <div class="checkpoint">All 5 containers Up. Cosmos prints version. dbt build passes. You are clear to continue.</div>
+</section>
+
 <!-- CD FRAMING -->
 <section id="cd-framing">
   <div class="step-header">
@@ -128,13 +179,17 @@
 
   <div class="callout info"><strong>The golden rule: nobody manually deploys to production.</strong>
     You will never type <code>dbt run --target prod</code> yourself. That command only runs inside Airflow — either on a schedule or triggered automatically when a Pull Request merges to the main branch.<br><br>
-    This is not just a convention. It is how data teams maintain trust in their production data. Every change to production has a paper trail: a Pull Request, a code review, a CI check, and an Airflow run log. If something goes wrong, you can trace exactly what changed, when, and who approved it.
+    Every change to production has a paper trail: a Pull Request, a code review, a CI check, and an Airflow run log. If something goes wrong, you can trace exactly what changed, when, and who approved it.
+  </div>
+
+  <div class="callout warning"><strong>Airflow only ever touches production schemas. Full stop.</strong>
+    Airflow runs <code>dbt build --target prod</code>. This writes to <code>prod_staging_silver</code> and <code>prod_mart_gold</code> and nowhere else. Airflow has no knowledge of your personal schema or dev schemas — it does not touch them, read from them, or overwrite them.
   </div>
 
   <h3>Where Airflow fits in your pipeline</h3>
 
   <table>
-    <thead><tr><th>Environment</th><th>Who builds models there</th><th>How</th></tr></thead>
+    <thead><tr><th>Environment</th><th>Who builds models</th><th>How</th></tr></thead>
     <tbody>
       <tr><td><strong>Personal</strong> (<code>dbt_yourname_*</code>)</td><td>You</td><td>Manually: <code>dbt run --target personal</code></td></tr>
       <tr><td><strong>Dev</strong> (<code>dev_*</code>)</td><td>GitHub Actions</td><td>Automatically when you merge to the dev branch</td></tr>
@@ -142,132 +197,46 @@
       <tr><td><strong>Production</strong> (<code>prod_*</code>)</td><td>Airflow ← you are here</td><td>On a schedule (and on merge to main)</td></tr>
     </tbody>
   </table>
-
-  <div class="callout info"><strong>What Airflow does that you could not do manually:</strong>
-    — Runs the full pipeline reliably at 2am every night without you being awake<br>
-    — Tracks every run — what ran, when, how long it took, whether it succeeded<br>
-    — Retries failed tasks automatically<br>
-    — Shows you exactly which model failed and why, without hunting through logs<br>
-    — Alerts you when something goes wrong via email or Slack<br>
-    — Keeps production always in sync with the latest merged code
-  </div>
-
 </section>
 
-<!-- TABLE OF CONTENTS -->
-<nav id="toc">
-  <div class="toc-header">
-    <span class="toc-title">📋 Table of Contents</span>
-    <button class="toc-toggle" onclick="toggleToc()" id="toc-btn">Hide</button>
-  </div>
-  <div id="toc-body">
-    <div class="toc-section">
-      <div class="toc-section-label">Understand</div>
-      <a href="#cd-framing" class="toc-link"><span class="sn" style="background:#7c3aed;font-size:8px;">CD</span>Airflow as CD</a>
-      <a href="#airflow" class="toc-link"><span class="sn gray">→</span>How Airflow works</a>
-      <a href="#cosmos" class="toc-link"><span class="sn gray">→</span>How Cosmos connects dbt</a>
-      <a href="#pipeline" class="toc-link"><span class="sn gray">→</span>The automated pipeline</a>
-    </div>
-    <div class="toc-section">
-      <div class="toc-section-label">Set up</div>
-      <a href="#step1" class="toc-link"><span class="sn">1</span>Verify Cosmos is installed</a>
-      <a href="#step2" class="toc-link"><span class="sn">2</span>Create the Airflow connection</a>
-      <a href="#step3" class="toc-link"><span class="sn">3</span>Add the DAG files</a>
-      <a href="#step4" class="toc-link"><span class="sn">4</span>Verify DAGs appear in Airflow</a>
-    </div>
-    <div class="toc-section">
-      <div class="toc-section-label">Run &amp; verify</div>
-      <a href="#step5" class="toc-link"><span class="sn">5</span>Trigger silver staging manually</a>
-      <a href="#step6" class="toc-link"><span class="sn">6</span>Enable scheduled DAGs</a>
-      <a href="#step7" class="toc-link"><span class="sn">7</span>Verify in pgAdmin</a>
-      <a href="#troubleshooting" class="toc-link"><span class="sn gray">?</span>Troubleshooting</a>
-    </div>
-  </div>
-</nav>
-
-<!-- ══════════════════════════════════════════ -->
-<!-- TUTORIAL: HOW AIRFLOW WORKS               -->
-<!-- ══════════════════════════════════════════ -->
-
-<section id="airflow">
+<!-- CORE CONCEPTS -->
+<section id="concepts">
   <div class="step-header">
     <div class="sc gray" style="font-size:18px;">→</div>
-    <h2>How Airflow works</h2>
+    <h2>Core concepts</h2>
   </div>
-
-  <p>Apache Airflow is a pipeline scheduler. Its job is to run tasks in the right order, at the right time, and tell you when something goes wrong. Think of it as a school bell system for your data — it knows which class starts when, which room it's in, and sounds the alarm if a teacher doesn't show up.</p>
-
-  <p>Every pipeline in Airflow is defined as a <strong>DAG</strong> — a Directed Acyclic Graph. The name sounds technical but the idea is simple: a list of tasks where each task can depend on one or more tasks before it. Airflow reads the dependency graph, figures out the correct execution order, and runs everything accordingly.</p>
-
-  <div class="callout info"><strong>What is a DAG?</strong>
-    A DAG is just a Python file that describes a workflow. It defines:<br><br>
-    <strong>Tasks</strong> — the individual units of work (run this dbt model, execute this SQL, send this alert)<br>
-    <strong>Dependencies</strong> — which tasks must complete before others can start<br>
-    <strong>Schedule</strong> — when the whole workflow should run (every 6 hours, every night at 1am, manually)<br><br>
-    Airflow does not run your code directly — it orchestrates when and in what order your code runs.
-  </div>
-
-  <p>The three core concepts you need to understand before looking at any DAG file:</p>
 
   <table>
     <thead><tr><th>Concept</th><th>What it is</th><th>Plain-English analogy</th></tr></thead>
     <tbody>
-      <tr>
-        <td><strong>DAG</strong></td>
-        <td>A Python file defining a complete workflow — its tasks, dependencies, and schedule</td>
-        <td>A recipe — lists every step in order and what to do if a step fails</td>
-      </tr>
-      <tr>
-        <td><strong>Task</strong></td>
-        <td>A single unit of work inside a DAG — run a dbt model, execute a shell command, call an API</td>
-        <td>One line in the recipe — "fold in the eggs"</td>
-      </tr>
-      <tr>
-        <td><strong>DAG Run</strong></td>
-        <td>One execution of a DAG — either triggered manually or by the schedule</td>
-        <td>One time you actually cook the recipe</td>
-      </tr>
-      <tr>
-        <td><strong>Connection</strong></td>
-        <td>A saved set of credentials Airflow uses to talk to an external system — your PostgreSQL database</td>
-        <td>The phone number saved in your contacts — you dial the name, not the digits</td>
-      </tr>
-      <tr>
-        <td><strong>Schedule</strong></td>
-        <td>A cron expression or preset that tells Airflow when to trigger a DAG automatically</td>
-        <td>The alarm clock — set it once, it fires every time</td>
-      </tr>
+      <tr><td><strong>DAG</strong></td><td>A Python file defining a complete workflow — its tasks, dependencies, and schedule</td><td>A recipe — lists every step in order and what to do if a step fails</td></tr>
+      <tr><td><strong>Task</strong></td><td>A single unit of work inside a DAG</td><td>One line in the recipe — "fold in the eggs"</td></tr>
+      <tr><td><strong>DAG Run</strong></td><td>One execution of a DAG — triggered manually or by schedule</td><td>One time you actually cook the recipe</td></tr>
+      <tr><td><strong>Connection</strong></td><td>A saved set of credentials Airflow uses to talk to PostgreSQL</td><td>The phone number saved in your contacts</td></tr>
+      <tr><td><strong>Schedule</strong></td><td>A cron expression that tells Airflow when to trigger a DAG automatically</td><td>The alarm clock — set it once, it fires every time</td></tr>
     </tbody>
   </table>
 
-  <h3>What Airflow looks like in your stack</h3>
-
-  <p>In this stack, Airflow runs inside two Docker containers — <code>airflow-webserver</code> (the UI at <a href="http://localhost:8080" target="_blank">localhost:8080</a>) and <code>airflow-scheduler</code> (the engine that reads DAG files and triggers runs). The scheduler watches the <code>airflow/dags/</code> folder. Any Python file you put there becomes a DAG. No restart required — Airflow picks it up automatically within 30 seconds.</p>
-
   <div class="callout info"><strong>What is a cron expression?</strong>
-    Cron is a time-based job scheduler that has been around since the 1970s. It uses a 5-field expression to define when something should run:<br><br>
+    Cron uses a 5-field expression to define when something should run:<br><br>
     <code>* * * * *</code> — minute · hour · day-of-month · month · day-of-week<br><br>
     Examples:<br>
-    <code>0 */6 * * *</code> — every 6 hours (at minute 0: 00:00, 06:00, 12:00, 18:00)<br>
-    <code>0 1 * * *</code> — every day at 1:00am<br>
+    <code>0 */6 * * *</code> — every 6 hours (00:00, 06:00, 12:00, 18:00)<br>
     <code>0 2 * * *</code> — every day at 2:00am<br>
     <code>None</code> — never runs automatically — manual trigger only
   </div>
 </section>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- TUTORIAL: HOW COSMOS CONNECTS DBT         -->
-<!-- ══════════════════════════════════════════ -->
-
+<!-- WHY COSMOS -->
 <section id="cosmos">
   <div class="step-header">
     <div class="sc gray" style="font-size:18px;">→</div>
-    <h2>How Cosmos connects dbt to Airflow</h2>
+    <h2>Why Cosmos?</h2>
   </div>
 
-  <p>Without Cosmos, running dbt from Airflow means writing a <code>BashOperator</code> task that executes <code>dbt run</code> as a shell command. That works — but it's a black box. Airflow sees one task: "run dbt." If 8 of your 12 staging models succeed and 4 fail, Airflow just reports the whole thing as failed. You have to open the logs and hunt for what went wrong.</p>
+  <p>Without Cosmos, running dbt from Airflow means writing a <code>BashOperator</code> task that executes <code>dbt run</code> as a shell command. That works — but it's a black box. Airflow sees one task: "run dbt." If 8 of your 12 staging models succeed and 4 fail, Airflow just reports the whole thing as failed.</p>
 
-  <p>Cosmos changes this. It reads your dbt project — the models, the tests, the dependencies between them — and converts each dbt model into its own individual Airflow task. Instead of one opaque task, you get a full task graph where every model is visible, every test is trackable, and a failure in one model doesn't hide which model caused it.</p>
+  <p>Cosmos reads your dbt project — the models, the tests, the dependencies between them — and converts each dbt model into its own individual Airflow task. Instead of one opaque task, you get a full task graph where every model is visible, every test is trackable, and a failure in one model doesn't hide which model caused it.</p>
 
   <div class="flow">
     <div class="flow-box">dbt project<br><small style="font-weight:400;color:var(--muted);">models, tests, sources</small></div>
@@ -279,423 +248,331 @@
     <div class="flow-box">PostgreSQL<br><small style="font-weight:400;color:var(--muted);">tables built &amp; tested</small></div>
   </div>
 
-  <div class="callout info"><strong>What is DbtTaskGroup?</strong>
-    <code>DbtTaskGroup</code> is the core Cosmos pattern used in this project. It takes a dbt selector (like <code>staging</code> or <code>marts</code>) and generates a group of Airflow tasks — one per model — with all the correct dependencies already wired up from dbt's own lineage graph.<br><br>
-    You pass it four things:<br>
-    <strong>project_config</strong> — where the dbt project lives on disk<br>
-    <strong>profile_config</strong> — how dbt connects to PostgreSQL (the Airflow connection)<br>
-    <strong>execution_config</strong> — which dbt binary to use (the virtual environment path)<br>
-    <strong>render_config</strong> — which models to include (the selector)<br><br>
-    Cosmos handles the rest. It parses the dbt manifest, builds the task graph, and executes each model in the correct order.
-  </div>
-
-  <h3>Why one task per model matters</h3>
-
-  <p>When every model is its own Airflow task, you get three things you cannot get from a single <code>dbt run</code> shell command:</p>
-
-  <ul>
-    <li><strong>Precise failure visibility</strong> — Airflow shows exactly which model failed, not just that "dbt failed." You can click into the task, read the logs, fix the model, and rerun just that task without rerunning the whole pipeline.</li>
-    <li><strong>Partial reruns</strong> — if <code>stg_revenue_account_daily</code> fails at 1am, you can fix it and trigger just that task from the Airflow UI instead of rerunning all 12 staging models.</li>
-    <li><strong>Task-level history</strong> — every model run is logged with its duration, status, and output. Over time this becomes a performance baseline — you can see if a model is getting slower as data volumes grow.</li>
-  </ul>
-
   <div class="callout info"><strong>How does Cosmos know the model order?</strong>
-    dbt generates a file called <code>manifest.json</code> every time you run <code>dbt compile</code> or <code>dbt run</code>. This file contains the full dependency graph for every model in the project — which models each one reads from, which tests apply to each model, and the execution order. Cosmos reads this manifest and uses it to wire up the Airflow task dependencies automatically. You never define the order manually.
+    dbt generates <code>manifest.json</code> every time you run <code>dbt compile</code> or <code>dbt build</code>. This file contains the full dependency graph for every model in the project. Cosmos reads this manifest and wires up the Airflow task dependencies automatically.<br><br>
+    <strong>Key principle: dbt owns the order, you own the schedule.</strong> You never define staging-before-marts in Airflow code — dbt's lineage graph already knows that.
   </div>
 </section>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- THE AUTOMATED PIPELINE                    -->
-<!-- ══════════════════════════════════════════ -->
-
+<!-- THE PIPELINE -->
 <section id="pipeline">
   <div class="step-header">
     <div class="sc gray" style="font-size:18px;">→</div>
     <h2>The automated pipeline</h2>
   </div>
 
-  <p>This runbook sets up three DAGs. Each one targets a different layer of the medallion architecture and runs on its own schedule:</p>
+  <p>This runbook sets up one DAG that runs the full pipeline on a daily schedule. Cosmos reads dbt's manifest and builds staging → intermediate → marts in the correct order automatically.</p>
 
   <div class="dag-box">
     <div class="dag-header">DAG schedule</div>
     <div class="dag-body">
       <div class="dag-row">
-        <span class="dag-label"><code>silver_layer_staging</code></span>
-        <span class="dag-schedule">Every 6 hours — 00:00, 06:00, 12:00, 18:00</span>
-      </div>
-      <div class="dag-row">
-        <span class="dag-label"><code>silver_layer_staging_daily</code></span>
-        <span class="dag-schedule">Every day at 1:00am</span>
-      </div>
-      <div class="dag-row">
-        <span class="dag-label"><code>gold_layer_marts_daily</code></span>
-        <span class="dag-schedule">Every day at 2:00am</span>
+        <span class="dag-label"><code>pipeline_daily</code></span>
+        <span class="dag-schedule">Every day at 2:00am — full pipeline: staging → intermediate → marts</span>
       </div>
     </div>
   </div>
 
-  <p>The timing is intentional. Silver staging runs every 6 hours to keep the staging layer fresh throughout the day. The daily revenue staging model runs at 1am when new daily billing records are available. Gold marts run at 2am — after both silver pipelines have completed — so they always build on top of fully refreshed silver data.</p>
-
-  <table>
-    <thead><tr><th>DAG</th><th>Cosmos selector</th><th>Models</th><th>What it does</th></tr></thead>
-    <tbody>
-      <tr>
-        <td><code>silver_layer_staging</code></td>
-        <td><code>staging</code></td>
-        <td>12 staging views</td>
-        <td>Rebuilds all staging views from bronze. Fast — views don't store data, they just refresh the SQL definition.</td>
-      </tr>
-      <tr>
-        <td><code>silver_layer_staging_daily</code></td>
-        <td><code>intermediate</code></td>
-        <td>2 incremental tables</td>
-        <td>Runs the incremental intermediate models — processes only new rows since the last run.</td>
-      </tr>
-      <tr>
-        <td><code>gold_layer_marts_daily</code></td>
-        <td><code>marts</code></td>
-        <td>10 mart tables</td>
-        <td>Rebuilds all gold mart tables. Runs after both silver pipelines so marts always reflect the latest data.</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div class="callout info"><strong>What about bronze and seeds?</strong>
-    Bronze ingestion and seed loading are handled by separate DAGs already in the repo — <code>bronze_layer_ingestion_manual.py</code> and <code>seed_layer_region_mapping.py</code>. Both are manual-trigger only. Bronze data is loaded when new source data arrives, not on a fixed schedule. Seeds only need to run when the CSV changes. This runbook focuses on the three DAGs that automate the dbt transformation pipeline.
+  <div class="callout warning"><strong>Relationship tests and first run.</strong>
+    Do not add <code>relationships</code> tests to mart-layer <code>schema.yml</code> files until both the staging and mart tables have been built and exist in the database. The test will fail with a "relation does not exist" error on the first pipeline run. Add relationship tests only after the full pipeline has run successfully end to end.
   </div>
 </section>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- STEP 1: VERIFY COSMOS IS INSTALLED        -->
-<!-- ══════════════════════════════════════════ -->
-
+<!-- STEP 1 -->
 <section id="step1">
-  <div class="step-header"><div class="sc">1</div><h2>Verify Cosmos is installed</h2></div>
+  <div class="step-header"><div class="sc">1</div><h2>Create production schemas</h2></div>
 
-  <p>Cosmos was included in <code>airflow/requirements.txt</code> when you built the stack in Runbook 1. Confirm it is available inside the Airflow container:</p>
+  <p>dbt does not create schemas automatically — only tables inside them. Run this once before triggering any DAG:</p>
 
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler pip show astronomer-cosmos</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="checkpoint">You see <code>Name: astronomer-cosmos</code> and <code>Version: 1.13.1</code>.</div>
-
-  <p>Also confirm the dbt virtual environment is in place — Cosmos needs to know exactly which dbt binary to call:</p>
-
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler ls /usr/local/airflow/dbt_venv/bin/dbt</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="checkpoint">You see <code>/usr/local/airflow/dbt_venv/bin/dbt</code> — no "No such file" error.</div>
-
-  <div class="callout info"><strong>Why does Cosmos need a separate dbt binary path?</strong>
-    dbt is installed in its own virtual environment (<code>dbt_venv</code>) to keep its dependencies separate from Airflow's. If both shared the same Python environment, their package requirements would conflict — different versions of the same library required by each tool. Cosmos accepts an <code>ExecutionConfig</code> that points directly to the dbt binary inside the virtual environment, bypassing any conflict entirely.
+  <div class="callout info"><strong>Why weren't these created in Runbook 2?</strong>
+    Runbook 2 created your personal and dev schemas. Production schemas are deliberately kept separate — they are owned by the automated pipeline, not by individual developers. Creating them here, immediately before setting up the pipeline that writes to them, keeps the separation clear.
   </div>
+
+  <div class="code-wrap"><pre><code>docker exec postgres psql -U mds_user -d btg_resource_utilization -c "
+CREATE SCHEMA IF NOT EXISTS prod_staging_silver;
+CREATE SCHEMA IF NOT EXISTS prod_mart_gold;
+CREATE SCHEMA IF NOT EXISTS prod_snapshots;
+GRANT ALL ON SCHEMA prod_staging_silver TO mds_user;
+GRANT ALL ON SCHEMA prod_mart_gold TO mds_user;
+GRANT ALL ON SCHEMA prod_snapshots TO mds_user;
+GRANT USAGE ON SCHEMA prod_staging_silver TO analytics_engineer, data_scientist;
+GRANT USAGE ON SCHEMA prod_mart_gold TO analytics_engineer, business_user;
+SELECT schema_name FROM information_schema.schemata
+WHERE schema_name LIKE 'prod%' ORDER BY schema_name;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">Three rows returned: <code>prod_mart_gold</code>, <code>prod_snapshots</code>, <code>prod_staging_silver</code>.</div>
+
+  <p>Refresh pgAdmin — you should now see all three prod schemas under <strong>btg_resource_utilization → Schemas</strong>.</p>
 </section>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- STEP 2: CREATE THE AIRFLOW CONNECTION     -->
-<!-- ══════════════════════════════════════════ -->
-
+<!-- STEP 2 -->
 <section id="step2">
   <div class="step-header"><div class="sc">2</div><h2>Create the Airflow connection</h2></div>
 
-  <p>Cosmos connects to PostgreSQL through an Airflow connection — a named set of credentials stored in the Airflow metadata database. The DAG files reference this connection by name (<code>postgres_default</code>) rather than hardcoding credentials.</p>
+  <p>Cosmos connects to PostgreSQL through an Airflow connection — a named set of credentials stored in the Airflow metadata database. The DAG file references this connection by name (<code>btg_resource_utilization</code>) rather than hardcoding credentials.</p>
 
-  <p>Open Airflow at <a href="http://localhost:8080" target="_blank">localhost:8080</a> and log in with <code>admin / admin</code>.</p>
+  <p>Create it via terminal — more reliable than the UI and repeatable by anyone who clones the repo:</p>
 
-  <p>Navigate to <strong>Admin → Connections</strong> and click the <strong>+</strong> button to add a new connection. Fill in the fields exactly as shown:</p>
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler airflow connections add btg_resource_utilization \
+    --conn-type postgres \
+    --conn-host postgres \
+    --conn-login mds_user \
+    --conn-password mds_password \
+    --conn-port 5432</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <table>
-    <thead><tr><th>Field</th><th>Value</th></tr></thead>
-    <tbody>
-      <tr><td>Connection Id</td><td><code>postgres_default</code></td></tr>
-      <tr><td>Connection Type</td><td><code>Postgres</code></td></tr>
-      <tr><td>Host</td><td><code>postgres</code></td></tr>
-      <tr><td>Database</td><td><code>btg_resource_utilization</code></td></tr>
-      <tr><td>Login</td><td><code>mds_user</code></td></tr>
-      <tr><td>Password</td><td><code>mds_password</code></td></tr>
-      <tr><td>Port</td><td><code>5432</code></td></tr>
-    </tbody>
-  </table>
+  <p>Verify it was created:</p>
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler airflow connections get btg_resource_utilization</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <p>Click <strong>Save</strong>.</p>
-
-  <div class="checkpoint">The connection <code>postgres_default</code> appears in the connections list with type <code>postgres</code>.</div>
+  <div class="checkpoint">You see the connection details with <code>conn_id=btg_resource_utilization</code> and <code>conn_type=postgres</code>.</div>
 
   <div class="callout info"><strong>Why is the host <code>postgres</code> and not <code>localhost</code>?</strong>
     Airflow and PostgreSQL both run inside Docker on the same network. Inside Docker, containers find each other by container name — not by <code>localhost</code>. The PostgreSQL container is named <code>postgres</code> in <code>docker-compose.yml</code>. From outside Docker (your Mac Terminal or pgAdmin), you use <code>localhost:5432</code>. From inside Docker (Airflow), you use <code>postgres:5432</code>.
   </div>
 
-  <p>Test the connection from the Terminal to confirm Airflow can reach PostgreSQL:</p>
-
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow connections test postgres_default</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="checkpoint">You see <code>Connection tested successfully</code>.</div>
+  <div class="callout info"><strong>How do you verify the connection works?</strong>
+    Airflow 2.x removed the <code>connections test</code> CLI command. The correct way to verify is to trigger the DAG in Step 5 and check its logs — if the connection is wrong, the first task will fail immediately with a clear "could not connect" error. Fix it in Admin → Connections and re-trigger.
+  </div>
 </section>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- STEP 3: ADD THE DAG FILES                 -->
-<!-- ══════════════════════════════════════════ -->
-
-<section id="step3">
-  <div class="step-header"><div class="sc">3</div><h2>Add the DAG files</h2></div>
-
-  <div class="callout info"><strong>Why do the production schemas have a <code>prod_</code> prefix?</strong>
-    When dbt runs, it combines the target schema from <code>profiles.yml</code> with the custom schema from <code>dbt_project.yml</code>. Since the production target uses <code>schema: prod</code> in <code>profiles.yml</code> and the models are configured with <code>+schema: staging_silver</code> and <code>+schema: mart_gold</code>, dbt produces:<br><br>
-    <code>prod</code> + <code>staging_silver</code> → <code>prod_staging_silver</code><br>
-    <code>prod</code> + <code>mart_gold</code> → <code>prod_mart_gold</code><br><br>
-    This is dbt's default behaviour. The DAG files below use these exact schema names so Airflow writes models to the correct production schemas. When you connect Metabase later, point it at <code>prod_mart_gold</code>.
+<!-- COSMOS TRADEOFFS -->
+<section id="cosmos-tradeoffs">
+  <div class="step-header">
+    <div class="sc gray" style="font-size:18px;">→</div>
+    <h2>Why we're not using Cosmos (yet)</h2>
   </div>
 
-  <p>The three DAG files live in <code>airflow/dags/</code> inside the repo. Confirm they are there:</p>
+  <p>Cosmos is installed in your Docker image. This section explains what it does, why it's appealing, and why plain <code>dbt build</code> is the better choice at this stage — so you can make an informed decision when your project grows.</p>
 
-  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
-ls airflow/dags/</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="callout info"><strong>What Cosmos gives you.</strong>
+    Without Cosmos, Airflow sees your entire pipeline as one task: "run dbt." If 8 of 12 models succeed and 4 fail, Airflow just reports the whole thing as failed. You have to dig through logs to find out what went wrong.<br><br>
+    Cosmos reads your dbt project and converts each model into its own Airflow task. You get a full task graph, model-level retry, and task-level run history. At large scale (100+ models, long-running pipelines), this visibility is genuinely valuable.
+  </div>
 
-  <div class="checkpoint">You see <code>silver_layer_staging.py</code>, <code>silver_layer_staging_daily.py</code>, and <code>gold_layer_marts_daily.py</code> in the list.</div>
+  <div class="callout warning"><strong>What Cosmos takes away.</strong>
+    At small scale, Cosmos introduces problems that plain <code>dbt build</code> doesn't have:<br><br>
+    <strong>1. Test ordering breaks.</strong> dbt runs tests after each model in dependency order. Cosmos runs tests per-task independently — so a staging model's test can fire before the mart models it references are built. Relationship tests fail with "relation does not exist" on every first run.<br><br>
+    <strong>2. Manifest staleness.</strong> Cosmos builds its Airflow task graph from <code>manifest.json</code>. If you add a new model or change a test without recompiling, Cosmos builds the wrong graph — new models get orphaned, changed tests don't run. You need a <code>dbt compile</code> step before every pipeline run.<br><br>
+    <strong>3. Schema double-append.</strong> Cosmos overrides the dbt target schema via <code>profile_args</code>. If you set it to <code>prod_staging_silver</code>, dbt appends again and produces <code>prod_staging_silver_staging_silver</code>. It must be set to just <code>prod</code> and requires understanding of how dbt combines target + custom schema.<br><br>
+    <strong>4. More moving parts.</strong> The Airflow connection, ProfileConfig, ExecutionConfig, DbtTaskGroup, and RenderConfig all need to be wired correctly. Any misconfiguration is silent — the DAG loads fine but runs wrong.
+  </div>
 
-  <p>If any are missing, create them now. Open VS Code:</p>
+  <div class="callout info"><strong>When to switch to Cosmos.</strong>
+    Consider it when: your pipeline takes longer than 10 minutes and you need to retry individual failed models without rerunning everything, or you have a large team where different people own different models and need model-level visibility to debug independently.<br><br>
+    For now, plain <code>dbt build</code> in a <code>BashOperator</code> is the right choice — dbt handles ordering correctly, tests run at the right time, and there's nothing to misconfigure.
+  </div>
 
-  <div class="code-wrap"><pre><code>code airflow/dags/silver_layer_staging.py</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <h3>What the Cosmos version looks like</h3>
+  <p>For reference — this is what <code>pipeline_daily.py</code> would look like with Cosmos enabled. It is commented out so you can see the pattern without it running:</p>
+
+  <div class="code-wrap"><pre><code># COSMOS VERSION — commented out, for reference only
+# Uncomment and replace pipeline_daily.py contents to enable Cosmos
+#
+# from datetime import datetime
+# from pathlib import Path
+# from airflow import DAG
+# from airflow.operators.empty import EmptyOperator
+# from airflow.operators.bash import BashOperator
+# from cosmos import DbtTaskGroup, ProjectConfig, ProfileConfig, ExecutionConfig, RenderConfig
+# from cosmos.profiles import PostgresUserPasswordProfileMapping
+#
+# DBT_PROJECT_PATH = Path("/opt/airflow/dbt")
+# DBT_EXECUTABLE  = Path("/usr/local/airflow/dbt_venv/bin/dbt")
+#
+# profile_config = ProfileConfig(
+#     profile_name="resource_utilization",
+#     target_name="prod",
+#     profile_mapping=PostgresUserPasswordProfileMapping(
+#         conn_id="btg_resource_utilization",
+#         profile_args={"schema": "prod"},  # must be "prod" not "prod_staging_silver"
+#     ),
+# )
+#
+# with DAG(
+#     dag_id="pipeline_daily",
+#     start_date=datetime(2026, 1, 1),
+#     schedule="0 2 * * *",
+#     catchup=False,
+#     tags=["daily", "full", "cosmos"],
+# ) as dag:
+#
+#     start = EmptyOperator(task_id="start")
+#     end   = EmptyOperator(task_id="end")
+#
+#     compile_dbt = BashOperator(
+#         task_id="compile_dbt",
+#         bash_command=(
+#             f"{DBT_EXECUTABLE} compile "
+#             f"--project-dir {DBT_PROJECT_PATH} "
+#             f"--profiles-dir {DBT_PROJECT_PATH} "
+#             "--target prod"
+#         ),
+#     )
+#
+#     full_pipeline = DbtTaskGroup(
+#         group_id="full_pipeline",
+#         project_config=ProjectConfig(DBT_PROJECT_PATH),
+#         profile_config=profile_config,
+#         execution_config=ExecutionConfig(dbt_executable_path=DBT_EXECUTABLE),
+#         render_config=RenderConfig(select=["staging", "intermediate", "marts"]),
+#     )
+#
+#     start >> compile_dbt >> full_pipeline >> end</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="callout info"><strong>Note the <code>compile_dbt</code> step.</strong>
+    The Cosmos version requires a <code>dbt compile</code> before every run to keep the manifest fresh. Without it, Cosmos builds the task graph from a stale manifest and new or changed models won't be picked up correctly.
+  </div>
+</section>
+
+<!-- STEP 3 -->
+<section id="step3">
+  <div class="step-header"><div class="sc">3</div><h2>Add the DAG file</h2></div>
+
+  <div class="callout info"><strong>Why plain <code>dbt build</code> instead of Cosmos?</strong>
+    Cosmos converts each dbt model into its own Airflow task — great for visibility, but it breaks dbt's natural test ordering. With Cosmos, a staging model's tests can fire before the mart models it references are built, causing "relation does not exist" errors on relationship tests.<br><br>
+    Plain <code>dbt build</code> lets dbt handle the order internally. Staging builds first, intermediate next, marts last — and tests run after each model in the correct sequence. Simpler, more robust, and correct for a project of this size.
+  </div>
+
+  <p>Remove any old DAG files (<code>silver_layer_staging.py</code>, <code>silver_layer_staging_daily.py</code>, <code>gold_layer_marts_daily.py</code>, <code>pipeline_6hours.py</code>) then create the new one:</p>
+
+  <div class="code-wrap"><pre><code>code airflow/dags/pipeline_daily.py</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <p>Paste this exactly, then save with <strong>⌘ + S</strong>:</p>
 
   <div class="code-wrap"><pre><code>from datetime import datetime
-from pathlib import Path
 from airflow import DAG
 from airflow.operators.empty import EmptyOperator
-from cosmos import DbtTaskGroup, ProjectConfig, ProfileConfig, ExecutionConfig, RenderConfig
-from cosmos.profiles import PostgresUserPasswordProfileMapping
+from airflow.operators.bash import BashOperator
 
-DBT_PROJECT_PATH = Path("/opt/airflow/dbt")
-DBT_EXECUTABLE  = Path("/usr/local/airflow/dbt_venv/bin/dbt")
-
-profile_config = ProfileConfig(
-    profile_name="resource_utilization",
-    target_name="prod",
-    profile_mapping=PostgresUserPasswordProfileMapping(
-        conn_id="postgres_default",
-        profile_args={"schema": "prod_staging_silver"},
-    ),
-)
-    start_date=datetime(2026, 1, 1),
-    schedule_interval="0 */6 * * *",   # every 6 hours
-    catchup=False,
-    tags=["silver", "staging", "cosmos"],
-) as dag:
-
-    start = EmptyOperator(task_id="start")
-    end   = EmptyOperator(task_id="end")
-
-    staging = DbtTaskGroup(
-        group_id="staging_models",
-        project_config=ProjectConfig(DBT_PROJECT_PATH),
-        profile_config=profile_config,
-        execution_config=ExecutionConfig(dbt_executable_path=DBT_EXECUTABLE),
-        render_config=RenderConfig(select=["staging"]),
-    )
-
-    start >> staging >> end</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="code-wrap"><pre><code>code airflow/dags/silver_layer_staging_daily.py</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="code-wrap"><pre><code>from datetime import datetime
-from pathlib import Path
-from airflow import DAG
-from airflow.operators.empty import EmptyOperator
-from cosmos import DbtTaskGroup, ProjectConfig, ProfileConfig, ExecutionConfig, RenderConfig
-from cosmos.profiles import PostgresUserPasswordProfileMapping
-
-DBT_PROJECT_PATH = Path("/opt/airflow/dbt")
-DBT_EXECUTABLE  = Path("/usr/local/airflow/dbt_venv/bin/dbt")
-
-profile_config = ProfileConfig(
-    profile_name="resource_utilization",
-    target_name="prod",
-    profile_mapping=PostgresUserPasswordProfileMapping(
-        conn_id="postgres_default",
-        profile_args={"schema": "prod_staging_silver"},
-    ),
-)
+DBT_PROJECT_PATH = "/opt/airflow/dbt"
+DBT_EXECUTABLE   = "/usr/local/airflow/dbt_venv/bin/dbt"
 
 with DAG(
-    dag_id="silver_layer_staging_daily",
+    dag_id="pipeline_daily",
     start_date=datetime(2026, 1, 1),
-    schedule_interval="0 1 * * *",   # every day at 1:00am
+    schedule="0 2 * * *",   # every day at 2:00am
     catchup=False,
-    tags=["silver", "intermediate", "cosmos"],
+    tags=["daily", "full"],
 ) as dag:
 
     start = EmptyOperator(task_id="start")
     end   = EmptyOperator(task_id="end")
 
-    intermediate = DbtTaskGroup(
-        group_id="intermediate_models",
-        project_config=ProjectConfig(DBT_PROJECT_PATH),
-        profile_config=profile_config,
-        execution_config=ExecutionConfig(dbt_executable_path=DBT_EXECUTABLE),
-        render_config=RenderConfig(select=["intermediate"]),
+    run_pipeline = BashOperator(
+        task_id="dbt_build",
+        bash_command=(
+            f"cd {DBT_PROJECT_PATH} && "
+            f"{DBT_EXECUTABLE} build "
+            f"--target prod "
+            f"--profiles-dir {DBT_PROJECT_PATH}"
+        ),
     )
 
-    start >> intermediate >> end</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+    start >> run_pipeline >> end</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="code-wrap"><pre><code>code airflow/dags/gold_layer_marts_daily.py</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="code-wrap"><pre><code>from datetime import datetime
-from pathlib import Path
-from airflow import DAG
-from airflow.operators.empty import EmptyOperator
-from cosmos import DbtTaskGroup, ProjectConfig, ProfileConfig, ExecutionConfig, RenderConfig
-from cosmos.profiles import PostgresUserPasswordProfileMapping
-
-DBT_PROJECT_PATH = Path("/opt/airflow/dbt")
-DBT_EXECUTABLE  = Path("/usr/local/airflow/dbt_venv/bin/dbt")
-
-profile_config = ProfileConfig(
-    profile_name="resource_utilization",
-    target_name="prod",
-    profile_mapping=PostgresUserPasswordProfileMapping(
-        conn_id="postgres_default",
-        profile_args={"schema": "prod_mart_gold"},
-    ),
-)
-
-with DAG(
-    dag_id="gold_layer_marts_daily",
-    start_date=datetime(2026, 1, 1),
-    schedule_interval="0 2 * * *",   # every day at 2:00am
-    catchup=False,
-    tags=["gold", "marts", "cosmos"],
-) as dag:
-
-    start = EmptyOperator(task_id="start")
-    end   = EmptyOperator(task_id="end")
-
-    marts = DbtTaskGroup(
-        group_id="mart_models",
-        project_config=ProjectConfig(DBT_PROJECT_PATH),
-        profile_config=profile_config,
-        execution_config=ExecutionConfig(dbt_executable_path=DBT_EXECUTABLE),
-        render_config=RenderConfig(select=["marts"]),
-    )
-
-    start >> marts >> end</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="callout info"><strong>What does <code>catchup=False</code> mean?</strong>
-    When a DAG has a schedule and a <code>start_date</code> in the past, Airflow by default tries to run it for every missed interval between the start date and now — this is called backfill. <code>catchup=False</code> disables this. When you first enable a scheduled DAG, it runs once at the next scheduled time rather than immediately running 50 times to catch up to today.
+  <div class="callout info"><strong>Use <code>schedule=</code> not <code>schedule_interval=</code>.</strong>
+    <code>schedule_interval</code> is deprecated in Airflow 2.4+ and will be removed in Airflow 3. Always use <code>schedule=</code>.
   </div>
 
-  <p>Commit the DAG files to the repo:</p>
+  <h3>Syntax check before Airflow picks it up</h3>
+  <p>Run the file directly inside the container — catches syntax errors immediately without waiting for Airflow's 30-second scan cycle:</p>
 
-  <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies
-git add .
-git commit -m "add cosmos airflow dags for silver and gold layers"
-git push</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler python /opt/airflow/dags/pipeline_daily.py</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">No errors and no traceback. Just the standard Airflow startup warnings — those are normal, ignore them.</div>
 </section>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- STEP 4: VERIFY DAGS APPEAR IN AIRFLOW     -->
-<!-- ══════════════════════════════════════════ -->
-
+<!-- STEP 4 -->
 <section id="step4">
-  <div class="step-header"><div class="sc">4</div><h2>Verify DAGs appear in Airflow</h2></div>
+  <div class="step-header"><div class="sc">4</div><h2>Verify DAG appears in Airflow</h2></div>
 
-  <p>Airflow's scheduler watches the <code>dags/</code> folder and picks up new files automatically. Wait 30 seconds, then open <a href="http://localhost:8080" target="_blank">localhost:8080</a>.</p>
+  <p>Airflow's scheduler watches the <code>dags/</code> folder and picks up new files automatically. Wait 30 seconds, then check:</p>
 
-  <div class="checkpoint">You see all three DAGs listed: <code>silver_layer_staging</code>, <code>silver_layer_staging_daily</code>, and <code>gold_layer_marts_daily</code>. All three show a <strong>pause icon</strong> — they are paused by default.</div>
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler airflow dags list | grep pipeline</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">You see <code>pipeline_daily</code> listed. It shows a pause icon in the Airflow UI at localhost:8080 — new DAGs are paused by default.</div>
+
+  <p>If the DAG does not appear after 60 seconds, force a reserialize:</p>
+
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler airflow dags reserialize</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
   <div class="callout info"><strong>Why are new DAGs paused by default?</strong>
-    Airflow pauses every new DAG automatically so it does not start running before you have had a chance to review it. You must explicitly unpause a DAG to enable its schedule. This is a safety mechanism — it prevents a misconfigured DAG from firing immediately on every missed interval since its start date.
+    Airflow pauses every new DAG automatically so it does not start running before you have reviewed it. You must explicitly unpause a DAG to enable its schedule — covered in Step 6.
   </div>
-
-  <p>If a DAG does not appear after 60 seconds, check for import errors:</p>
-
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow dags list-import-errors</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="checkpoint">The output is empty — no import errors.</div>
-
-  <p>You can also check that Airflow parsed the DAG files correctly:</p>
-
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow dags list | grep -E "silver|gold"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="checkpoint">You see all three DAG IDs listed with their schedules.</div>
 </section>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- STEP 5: TRIGGER SILVER STAGING MANUALLY   -->
-<!-- ══════════════════════════════════════════ -->
-
+<!-- STEP 5 -->
 <section id="step5">
-  <div class="step-header"><div class="sc">5</div><h2>Trigger silver staging manually</h2></div>
+  <div class="step-header"><div class="sc">5</div><h2>Trigger manually and verify</h2></div>
 
-  <p>Before enabling the schedule, trigger the pipeline manually to confirm everything runs end to end. Start with the silver staging DAG — it has no dependencies on the other two.</p>
+  <p>Before enabling the schedule, trigger the pipeline manually to confirm everything runs end to end.</p>
 
-  <p>In the Airflow UI, click <code>silver_layer_staging</code> to open it. Click the <strong>▶ Trigger DAG</strong> button (top right). Confirm when prompted.</p>
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler airflow dags trigger pipeline_daily</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <p>Or trigger from the Terminal:</p>
+  <p>The DAG run is queued. You can watch it in the Airflow UI at <a href="http://localhost:8080" target="_blank">localhost:8080</a> — you will see a single <code>dbt_build</code> task. Or verify entirely from the terminal:</p>
 
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow dags trigger silver_layer_staging</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <h3>Check run status from the terminal</h3>
 
-  <div class="checkpoint">The DAG run appears in the <strong>Runs</strong> column. Status moves from <em>queued</em> → <em>running</em> → <em>success</em>.</div>
+  <div class="code-wrap"><pre><code># Wait ~30 seconds then check — look for state = success
+docker exec btg-airflow-scheduler airflow dags list-runs --dag-id pipeline_daily</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <p>Click into the DAG run to see the task graph. You should see one task per staging model — all 12 — with their dependency arrows visible. Click any task to see its logs.</p>
+  <div class="checkpoint">The most recent run shows <code>state = success</code>. The run should complete in under 60 seconds.</div>
 
-  <div class="checkpoint">All 12 staging model tasks show green (success). The <code>start</code> and <code>end</code> tasks are also green.</div>
+  <h3>Verify data actually landed in prod</h3>
 
-  <div class="callout warning"><strong>If a task shows red (failed)</strong> — click the failed task → <strong>Log</strong>. The dbt error message will be in the log output. Common causes: the bronze table the model reads from is empty, or the Airflow connection credentials are wrong. Fix the issue and click <strong>Clear</strong> on the failed task to rerun just that task without rerunning the whole DAG.</div>
+  <p>A success state in Airflow confirms dbt ran — but this confirms the data is actually in the database:</p>
 
-  <p>Now trigger the intermediate DAG:</p>
+  <div class="code-wrap"><pre><code>docker exec postgres psql -U mds_user -d btg_resource_utilization -c "
+SELECT 'prod_staging_silver' AS schema, COUNT(*) FROM prod_staging_silver.stg_customer_details
+UNION ALL
+SELECT 'prod_mart_gold', COUNT(*) FROM prod_mart_gold.model_revenue_monthly;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow dags trigger silver_layer_staging_daily</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+  <div class="checkpoint">Both rows return a count greater than 0. This confirms data flowed from bronze → staging → marts in prod.</div>
 
-  <div class="checkpoint">Both intermediate model tasks show green.</div>
+  <h3>If the run failed — find out why</h3>
 
-  <p>Then trigger the gold marts DAG:</p>
+  <div class="code-wrap"><pre><code># Step 1 — get the run_id from the failed run
+docker exec btg-airflow-scheduler airflow dags list-runs --dag-id pipeline_daily
 
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow dags trigger gold_layer_marts_daily</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+# Step 2 — check task states for that run_id
+docker exec btg-airflow-scheduler airflow tasks states-for-dag-run pipeline_daily &lt;run_id&gt;</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="checkpoint">All 10 mart model tasks show green.</div>
+  <p>Then open the Airflow UI → click the failed run → click <strong>dbt_build</strong> task → click <strong>Log</strong>. The full dbt output is there — look for lines starting with <code>FAIL</code> or <code>ERROR</code>.</p>
 
-  <div class="callout success"><strong>The full pipeline ran successfully through Airflow.</strong> Bronze → silver staging → silver intermediate → gold marts — all orchestrated by Cosmos, with every model visible as its own task.</div>
-</section>
-
-<!-- ══════════════════════════════════════════ -->
-<!-- STEP 6: ENABLE SCHEDULED DAGS             -->
-<!-- ══════════════════════════════════════════ -->
-
-<section id="step6">
-  <div class="step-header"><div class="sc">6</div><h2>Enable the scheduled DAGs</h2></div>
-
-  <p>All three manual runs succeeded. Enable the schedules so the pipeline runs automatically going forward.</p>
-
-  <p>In the Airflow UI, toggle the pause switch next to each DAG from <strong>off</strong> to <strong>on</strong>. Or do it from the Terminal:</p>
-
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow dags unpause silver_layer_staging
-docker exec airflow-scheduler airflow dags unpause silver_layer_staging_daily
-docker exec airflow-scheduler airflow dags unpause gold_layer_marts_daily</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="checkpoint">All three DAGs show a green active indicator in the Airflow UI. The <strong>Next Run</strong> column shows the next scheduled execution time for each.</div>
-
-  <div class="callout info"><strong>What happens if the stack is not running at the scheduled time?</strong>
-    Airflow will run the missed DAG on the next scheduled interval once the stack comes back up — but only if <code>catchup=False</code> is set, which it is in all three DAGs. This means one catch-up run at the next scheduled time, not a backlog of every missed run.
+  <div class="callout warning"><strong>Common failure causes:</strong><br><br>
+    — Connection error: confirm the Airflow connection host is <code>postgres</code> not <code>localhost</code><br>
+    — profiles.yml not found: confirm <code>--profiles-dir</code> points to <code>/opt/airflow/dbt</code><br>
+    — dbt binary not found: confirm path is <code>/usr/local/airflow/dbt_venv/bin/dbt</code>
   </div>
 
-  <p>Confirm the schedule is active by checking the next run time for each DAG:</p>
-
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow dags next-execution silver_layer_staging
-docker exec airflow-scheduler airflow dags next-execution silver_layer_staging_daily
-docker exec airflow-scheduler airflow dags next-execution gold_layer_marts_daily</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="checkpoint">Each command returns a future timestamp matching the expected schedule.</div>
+  <div class="callout success"><strong>The full pipeline ran successfully.</strong> Bronze → staging → intermediate → marts — all run by dbt in the correct order, orchestrated by Airflow on a schedule.</div>
 </section>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- STEP 7: VERIFY IN PGADMIN                 -->
-<!-- ══════════════════════════════════════════ -->
+<!-- STEP 6 -->
+<section id="step6">
+  <div class="step-header"><div class="sc">6</div><h2>Enable the schedule</h2></div>
 
+  <p>The manual run succeeded. Enable the schedule so the pipeline runs automatically going forward.</p>
+
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler airflow dags unpause pipeline_daily</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">The DAG shows a green active indicator in the Airflow UI. The <strong>Next Run</strong> column shows tomorrow at 2:00am.</div>
+
+  <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler airflow dags next-execution pipeline_daily</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+  <div class="checkpoint">Returns a future timestamp — the next 2:00am UTC.</div>
+
+  <div class="callout info"><strong>What happens if the stack is not running at 2:00am?</strong>
+    Because <code>catchup=False</code> is set, Airflow runs one catch-up run at the next scheduled interval once the stack comes back up — not a backlog of every missed run.
+  </div>
+</section>
+
+<!-- STEP 7 -->
 <section id="step7">
-  <div class="step-header"><div class="sc">7</div><h2>Verify in pgAdmin</h2></div>
+  <div class="step-header"><div class="sc">7</div><h2>Spot-check the data</h2></div>
 
-  <p>Open pgAdmin at <a href="http://localhost:5050" target="_blank">localhost:5050</a> and run a spot-check query on the gold layer to confirm the data is fresh:</p>
+  <p>Run a spot-check query on the gold layer to confirm data is fresh:</p>
 
-  <div class="code-wrap"><pre><code>docker exec -it postgres psql -U mds_user -d btg_resource_utilization -c "
+  <div class="code-wrap"><pre><code>docker exec postgres psql -U mds_user -d btg_resource_utilization -c "
 SELECT
   model_variant,
   month_start_date,
@@ -704,17 +581,9 @@ FROM prod_mart_gold.model_revenue_monthly
 ORDER BY month_start_date DESC, total_net_revenue DESC
 LIMIT 5;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
-  <div class="checkpoint">You see 5 rows with model names, month dates, and revenue figures.</div>
+  <div class="checkpoint">5 rows returned with model names, month dates, and revenue figures.</div>
 
-  <p>Confirm the Airflow run metadata — check that all three DAG runs are recorded as successful:</p>
-
-  <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow dags list-runs --dag-id silver_layer_staging --limit 3
-docker exec airflow-scheduler airflow dags list-runs --dag-id silver_layer_staging_daily --limit 3
-docker exec airflow-scheduler airflow dags list-runs --dag-id gold_layer_marts_daily --limit 3</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-
-  <div class="checkpoint">All three commands show recent runs with state <code>success</code>.</div>
-
-  <div class="callout success"><strong>Your pipeline is fully automated.</strong> Silver staging refreshes every 6 hours. Intermediate models run at 1am. Gold marts build at 2am. Every model is visible and trackable in the Airflow UI — and Metabase is reading live data from <code>prod_mart_gold</code> every time a dashboard is opened.
+  <div class="callout success"><strong>Your pipeline is fully automated.</strong> The full bronze → silver → gold pipeline runs every night at 2am. Every model is visible and trackable in the Airflow UI. Metabase reads live data from <code>prod_mart_gold</code> every time a dashboard is opened.
   </div>
 </section>
 
@@ -725,70 +594,79 @@ docker exec airflow-scheduler airflow dags list-runs --dag-id gold_layer_marts_d
   <div class="trouble-item">
     <div class="trouble-q" onclick="t(this)">DAG does not appear in Airflow after 60 seconds <span class="arr">▼</span></div>
     <div class="trouble-a">
-      <p>Check for import errors first:</p>
-      <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow dags list-import-errors</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-      <p>The error message will point to the line in the DAG file that caused the problem — usually a missing import, a syntax error, or a wrong file path. Fix the DAG file, save it, and wait 30 seconds.</p>
+      <div class="code-wrap"><pre><code># Check for import errors
+docker exec btg-airflow-scheduler airflow dags list-import-errors
+
+# Syntax check the file directly
+docker exec btg-airflow-scheduler python /opt/airflow/dags/pipeline_daily.py
+
+# Force reserialize if DAG still won't appear
+docker exec btg-airflow-scheduler airflow dags reserialize
+
+# Restart scheduler as last resort
+docker compose restart airflow-scheduler</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
     </div>
   </div>
 
   <div class="trouble-item">
-    <div class="trouble-q" onclick="t(this)">Task fails with "Could not connect to postgres_default" <span class="arr">▼</span></div>
+    <div class="trouble-q" onclick="t(this)">How to check if the last run succeeded (no UI) <span class="arr">▼</span></div>
     <div class="trouble-a">
-      <p>The Airflow connection was not saved correctly. Go to <strong>Admin → Connections</strong>, click <code>postgres_default</code>, and verify the host is <code>postgres</code> (not <code>localhost</code>) and the port is <code>5432</code>. Test it from the Terminal:</p>
-      <div class="code-wrap"><pre><code>docker exec airflow-scheduler airflow connections test postgres_default</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler airflow dags list-runs --dag-id pipeline_daily</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>Look for <code>state = success</code> on the most recent run. Then confirm data actually landed:</p>
+      <div class="code-wrap"><pre><code>docker exec postgres psql -U mds_user -d btg_resource_utilization -c "
+SELECT 'prod_staging_silver' AS schema, COUNT(*) FROM prod_staging_silver.stg_customer_details
+UNION ALL
+SELECT 'prod_mart_gold', COUNT(*) FROM prod_mart_gold.model_revenue_monthly;"</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>Both rows must return a count greater than 0. Airflow state alone confirms dbt ran — the row counts confirm data actually landed.</p>
     </div>
   </div>
 
   <div class="trouble-item">
-    <div class="trouble-q" onclick="t(this)">Task fails with "dbt not found" or "No such file or directory" <span class="arr">▼</span></div>
+    <div class="trouble-q" onclick="t(this)">Run failed — how to find the error <span class="arr">▼</span></div>
     <div class="trouble-a">
-      <p>The dbt virtual environment path in the DAG file doesn't match where dbt is actually installed. Verify the correct path:</p>
-      <div class="code-wrap"><pre><code>docker exec airflow-scheduler ls /usr/local/airflow/dbt_venv/bin/dbt</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-      <p>If the path is different from <code>/usr/local/airflow/dbt_venv/bin/dbt</code>, update the <code>DBT_EXECUTABLE</code> variable in all three DAG files to match.</p>
+      <div class="code-wrap"><pre><code># Step 1 — get the run_id
+docker exec btg-airflow-scheduler airflow dags list-runs --dag-id pipeline_daily
+
+# Step 2 — check task states for that run_id
+docker exec btg-airflow-scheduler airflow tasks states-for-dag-run pipeline_daily &lt;run_id&gt;</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>Then open Airflow UI → click the failed run → click <strong>dbt_build</strong> → click <strong>Log</strong>. The full dbt output is there. Look for lines starting with <code>FAIL</code> or <code>ERROR</code> — dbt prints the exact model name and SQL that failed.</p>
     </div>
   </div>
 
   <div class="trouble-item">
-    <div class="trouble-q" onclick="t(this)">Task fails with "manifest.json not found" <span class="arr">▼</span></div>
+    <div class="trouble-q" onclick="t(this)">Task fails with "could not connect to server" <span class="arr">▼</span></div>
     <div class="trouble-a">
-      <p>Cosmos reads the dbt manifest to build the task graph. The manifest is generated when you run <code>dbt compile</code> or any dbt command. Run this to generate it:</p>
-      <div class="code-wrap"><pre><code>cd ~/Documents/btg-case-studies/resource-utilization
-dbt compile</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-      <p>Then retrigger the DAG.</p>
+      <p>The <code>profiles.yml</code> prod target uses <code>host: postgres</code> — not <code>localhost</code>. From inside Docker, containers find each other by container name. Verify the profiles.yml inside the container:</p>
+      <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler cat /opt/airflow/dbt/profiles.yml | grep host</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>All targets must show <code>host: postgres</code>. If any show <code>localhost</code>, fix <code>dbt/profiles.yml</code> on your Mac and restart the containers.</p>
     </div>
   </div>
 
   <div class="trouble-item">
-    <div class="trouble-q" onclick="t(this)">DAG run shows success but gold tables are empty <span class="arr">▼</span></div>
+    <div class="trouble-q" onclick="t(this)">Task fails with "profiles.yml not found" <span class="arr">▼</span></div>
     <div class="trouble-a">
-      <p>The mart DAG ran before the intermediate DAG finished — gold models found no data to build on. This can happen on the first manual run if you trigger all three at once. The fix is to trigger them in order: silver staging first, wait for success, then intermediate, wait for success, then gold. The scheduled runs handle this automatically through the timing offsets (1am vs 2am).</p>
+      <p>The DAG uses <code>--profiles-dir /opt/airflow/dbt</code>. This path is the dbt folder mounted inside Docker via the volume in <code>docker-compose.yml</code>. Confirm the file is there:</p>
+      <div class="code-wrap"><pre><code>docker exec btg-airflow-scheduler ls /opt/airflow/dbt/profiles.yml</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+      <p>If missing — the volume mount is broken. Check <code>docker-compose.yml</code> has <code>./dbt:/opt/airflow/dbt</code> in both airflow service volumes sections.</p>
     </div>
   </div>
 
   <div class="trouble-item">
-    <div class="trouble-q" onclick="t(this)">Airflow scheduler is not picking up DAG file changes <span class="arr">▼</span></div>
+    <div class="trouble-q" onclick="t(this)">Relationship test failing with "relation does not exist" <span class="arr">▼</span></div>
     <div class="trouble-a">
-      <p>The scheduler checks the DAGs folder every 30 seconds by default. If changes are not picked up after 60 seconds, restart the scheduler:</p>
-      <div class="code-wrap"><pre><code>docker compose restart airflow-scheduler</code></pre><button class="copy-btn" onclick="copyCode(this)">copy</button></div>
-    </div>
-  </div>
-
-  <div class="trouble-item">
-    <div class="trouble-q" onclick="t(this)">How do I rerun a single failed task without rerunning the whole DAG? <span class="arr">▼</span></div>
-    <div class="trouble-a">
-      <p>In the Airflow UI, click the DAG run → click the failed task (shown in red) → click <strong>Clear Task</strong>. Airflow will rerun only that task and any downstream tasks that depend on it. Tasks that already succeeded are not touched.</p>
+      <p>A <code>relationships</code> test in a staging <code>schema.yml</code> references a mart table. This is a design issue — staging models should not reference downstream mart tables in their tests. Move the test to the mart model's <code>schema.yml</code> instead, where both tables are guaranteed to exist when the test runs.</p>
     </div>
   </div>
 </section>
 
 <div class="whats-next">
   <h2>What's next? 🎯</h2>
-  <p>Your production pipeline is fully automated. Airflow handles production — nobody touches it manually from here. Here's what comes next:</p>
+  <p>Your pipeline is automated. Open <strong>Runbook 5</strong> to set up the CI/CD workflow — GitHub Actions runs <code>dbt build --select state:modified+</code> on every Pull Request, and triggers Airflow on merge to main.</p>
   <ul>
-    <li>Open <strong>Runbook 5</strong> — the team workflow. Learn how to use feature branches, open Pull Requests, let CI run automated tests, and watch your code travel from your personal schema all the way to production without touching a single prod command</li>
-    <li>Open <strong>Metabase at localhost:3000</strong> — connect it to <code>prod_mart_gold</code> and build dashboards on top of the revenue and token usage tables that are now refreshed automatically every night</li>
-    <li>Add <strong>email or Slack alerts</strong> in Airflow so you get notified when a DAG fails — set <code>email_on_failure=True</code> or use the Slack operator in the DAG definition</li>
-    <li>Run <code>dbt docs generate</code> inside the Airflow container to regenerate documentation after any model changes</li>
+    <li>Query <code>prod_mart_gold</code> tables in pgAdmin to explore the fresh data</li>
+    <li>Connect Metabase at <a href="http://localhost:3000" target="_blank">localhost:3000</a> to <code>prod_mart_gold</code> and build your first dashboard</li>
+    <li>Add failure alerting — set <code>email_on_failure=True</code> in the DAG definition</li>
+    <li>Run <code>dbt docs generate</code> inside the container to regenerate documentation after model changes</li>
   </ul>
 </div>
 
@@ -827,8 +705,7 @@ function toggleToc() {
 function t(el) {
   const a = el.nextElementSibling;
   const open = a.classList.contains('open');
-  document.querySelectorAll('.trouble-a').forEach(x => x.classList.remove('open'));
-  document.querySelectorAll('.trouble-q').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.trouble-a').forEach(x => { x.classList.remove('open'); x.previousElementSibling.classList.remove('active'); });
   if (!open) { a.classList.add('open'); el.classList.add('active'); }
 }
 </script>
