@@ -1,0 +1,39 @@
+name: dbt Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  DBT_HOST: ${{ secrets.DBT_HOST }}
+  DBT_PORT: ${{ secrets.DBT_PORT }}
+  DBT_USER: ${{ secrets.DBT_USER }}
+  DBT_PASSWORD: ${{ secrets.DBT_PASSWORD }}
+  DBT_DBNAME: ${{ secrets.DBT_DBNAME }}
+
+jobs:
+  dbt-prod:
+    name: dbt Production — full build and test
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dbt packages
+        run: cd resource-utilization/dbt && dbt deps --profiles-dir .
+
+      - name: Run full production build
+        run: |
+          cd resource-utilization/dbt
+          dbt build --target prod --profiles-dir .
+
+      - name: Save production manifest
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-manifest
+          path: resource-utilization/dbt/target/manifest.json
+          retention-days: 7
