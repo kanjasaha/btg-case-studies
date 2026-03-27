@@ -19,3 +19,4 @@ __pycache__/
 resource-utilization/dbt/models/staging/sources.yml.backup
 resource-utilization/*.html
 *.code-workspace
+*.code-workspace
