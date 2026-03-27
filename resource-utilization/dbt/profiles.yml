@@ -1,0 +1,69 @@
+# profiles.yml
+# Tells dbt how to connect to PostgreSQL for each environment.
+# NEVER commit this file — it contains your password.
+# Share profiles.yml.example with teammates instead.
+#
+# REPLACE "yourname" with your actual first name everywhere below.
+# Example: if your name is Alice, use "alice" → dbt_alice
+# dbt will then produce schemas like:
+#   staging models → dbt_alice_staging_silver
+#   mart models    → dbt_alice_mart_gold
+
+resource_utilization:
+
+  # Default target when you run dbt locally — always your personal schema
+  target: personal
+
+  outputs:
+
+    # ── PERSONAL ─────────────────────────────────────────────────────
+    # Your private development schemas. Only you write here.
+    # Run: dbt run --target personal (or just: dbt run)
+    personal:
+      type: postgres
+      host: postgres             # dbt runs inside Docker — use container name
+      port: 5432
+      user: mds_user
+      password: mds_password
+      dbname: btg_resource_utilization
+      schema: dbt_kanjasaha       # replace yourname with your first name e.g. dbt_alice
+      threads: 4
+
+    # ── CI ───────────────────────────────────────────────────────────
+    # Used by GitHub Actions on Pull Requests. Runs automatically.
+    # You never run this manually.
+    ci:
+      type: postgres
+      host: postgres             # dbt runs inside Docker — use container name
+      port: 5432
+      user: mds_user
+      password: mds_password
+      dbname: btg_resource_utilization
+      schema: ci
+      threads: 4
+
+    # ── DEV ──────────────────────────────────────────────────────────
+    # Shared team schemas. Run manually after merge to verify full project.
+    # Run: dbt build --target dev
+    dev:
+      type: postgres
+      host: postgres             # dbt runs inside Docker — use container name
+      port: 5432
+      user: mds_user
+      password: mds_password
+      dbname: btg_resource_utilization
+      schema: dev
+      threads: 4
+
+    # ── PRODUCTION ───────────────────────────────────────────────────
+    # Airflow writes here on a schedule. Metabase reads from here.
+    # You never run dbt --target prod manually.
+    prod:
+      type: postgres
+      host: postgres             # dbt runs inside Docker — use container name
+      port: 5432
+      user: mds_user
+      password: mds_password
+      dbname: btg_resource_utilization
+      schema: prod
+      threads: 4
